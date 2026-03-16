@@ -1,0 +1,74 @@
+<script lang="ts">
+	import type { PageData } from './$types';
+	import { formatRelative } from '$lib/utils/dates';
+
+	let { data }: { data: PageData } = $props();
+	let q = $state('');
+	let type = $state<'all' | 'project' | 'task' | 'note' | 'meeting'>('all');
+	let projectId = $state('');
+	let results = $state<Array<{ object_type: string; object_id: string; title: string; body: string; project_title: string; updated_at: string; project_slug: string | null }>>([]);
+
+	async function search() {
+		const params = new URLSearchParams({ q, type });
+		if (projectId) params.set('projectId', projectId);
+		const response = await fetch(`/api/search?${params.toString()}`);
+		const payload = await response.json();
+		results = payload.results ?? [];
+	}
+
+	function hrefFor(result: (typeof results)[number]): string {
+		if (result.object_type === 'project' && result.project_slug) return `/projects/${result.project_slug}`;
+		if (result.object_type === 'meeting' && result.project_slug) return `/projects/${result.project_slug}/meetings/${result.object_id}`;
+		if (result.object_type === 'note') return result.project_slug ? `/projects/${result.project_slug}/notes/${result.object_id}` : '/today';
+		if (result.object_type === 'task' && result.project_slug) return `/projects/${result.project_slug}`;
+		return '/search';
+	}
+</script>
+
+<div class="grid gap-6">
+	<section class="rounded-[2rem] border border-white/10 bg-base-200/50 p-6">
+		<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Search</p>
+		<h1 class="mt-2 text-4xl font-semibold text-white">Find the thing you barely remember.</h1>
+	</section>
+
+	<div class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
+		<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_12rem_14rem_auto]">
+			<input class="input input-bordered" bind:value={q} oninput={search} placeholder="Search projects, tasks, notes, and meetings" />
+			<select class="select select-bordered" bind:value={type} onchange={search}>
+				<option value="all">All types</option>
+				<option value="project">Projects</option>
+				<option value="task">Tasks</option>
+				<option value="note">Notes</option>
+				<option value="meeting">Meetings</option>
+			</select>
+			<select class="select select-bordered" bind:value={projectId} onchange={search}>
+				<option value="">All projects</option>
+				{#each data.projects as project}
+					<option value={project.id}>{project.title}</option>
+				{/each}
+			</select>
+			<button class="btn btn-primary" onclick={search}>Search</button>
+		</div>
+	</div>
+
+	<div class="grid gap-3">
+		{#if results.length}
+			{#each results as result}
+				<a class="rounded-[1.5rem] border border-white/10 bg-base-200/45 px-5 py-4 transition hover:border-info/30" href={hrefFor(result)}>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<div>
+							<p class="font-medium text-white">{result.title}</p>
+							<p class="text-sm text-base-content/60">{result.object_type} · {result.project_title || 'Global'}</p>
+						</div>
+						<p class="text-xs text-base-content/45">{formatRelative(result.updated_at)}</p>
+					</div>
+					<p class="mt-2 text-sm text-base-content/55">{result.body.slice(0, 220)}</p>
+				</a>
+			{/each}
+		{:else}
+			<div class="rounded-[1.5rem] border border-dashed border-white/10 bg-base-200/35 p-10 text-center text-base-content/55">
+				Search project names, task titles, note bodies, and meeting notes.
+			</div>
+		{/if}
+	</div>
+</div>

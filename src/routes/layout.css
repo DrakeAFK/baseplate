@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+@plugin 'daisyui';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+@plugin "daisyui/theme" {
+	name: "baseplate";
+	default: true;
+	prefersdark: true;
+	color-scheme: dark;
+	--color-base-100: #0f1720;
+	--color-base-200: #15202b;
+	--color-base-300: #1b2835;
+	--color-base-content: #e8f0f6;
+	--color-primary: #7dd3fc;
+	--color-primary-content: #08131d;
+	--color-secondary: #d4b483;
+	--color-accent: #9ae6b4;
+	--color-neutral: #081018;
+	--color-neutral-content: #e8f0f6;
+	--color-info: #7dd3fc;
+	--color-success: #9ae6b4;
+	--color-warning: #f6c177;
+	--color-error: #f38ba8;
+	--radius-box: 1.3rem;
+	--radius-btn: 1rem;
+	--radius-badge: 999px;
+	--border: 1px;
+}
+
+:root {
+	font-family: 'Satoshi', 'Segoe UI', sans-serif;
+}
+
+html {
+	background: #0b1117;
+}
+
+body {
+	min-height: 100vh;
+	background: #0b1117;
+	color: #e8f0f6;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+.prose code::before,
+.prose code::after {
+	content: '';
+}
