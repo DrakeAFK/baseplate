@@ -1,6 +1,6 @@
 # Baseplate
 
-Minimalist workspace built on SvelteKit; think theprimeagen knocking together a personal command center without the fluff.
+Minimal, local, engineering workspace. 
 
 ## Tech stack
 - **SvelteKit 2.50 + Vite 7** for client/server routing and fast hot reload.
@@ -15,22 +15,15 @@ Minimalist workspace built on SvelteKit; think theprimeagen knocking together a 
    ```bash
    npm install
    ```
-2. Run the dev server (opens the browser if you want).
+2. Run the dev server.
    ```bash
-   npm run dev -- --open
-   ```
-3. Build for production and verify if needed.
-   ```bash
-   npm run build
-   npm run check
-   npm run test
-   npm run test:e2e
+   npm run dev
    ```
 
-The repo assumes a modern Node runtime (≥18) and respects `engine-strict`. If you want to relocate your data folder, set `WORKSPACE_DIR` before running any command and the code will work off that path instead of `workspace/`.
+The repo assumes a modern Node runtime (≥22) and respects `engine-strict`. If you want to relocate your data folder, set `WORKSPACE_DIR` before running any command and the code will work off that path instead of `workspace/`.
 
 ## Workspace & database life cycle
-`src/lib/server/db/connection.ts` is where the magic happens: `getDb()` ensures `workspace/.app/app.db` exists, turns on WAL mode, and runs `src/lib/server/db/migrate.ts`. The first request that hits the server will trigger that pipeline so you never have to create the SQLite file by hand.
+`src/lib/server/db/connection.ts`: `getDb()` ensures `workspace/.app/app.db` exists, turns on WAL mode, and runs `src/lib/server/db/migrate.ts`. The first request that hits the server will trigger that pipeline so you never have to create the SQLite file by hand.
 
 `src/lib/server/workspace/paths.ts` outlines the layout:
 ```text
@@ -80,4 +73,4 @@ If you ever want to reset, delete `workspace/.app` and the watcher will rebuild 
 - The sidebar lists active projects and links directly to the detail pages so you can keep an eye on the stuff you care about.
 - App-wide state lives inside `src/lib/components/app-shell/AppShell.svelte`, which wires together the nav, modals, and palette without hiding what’s actually happening.
 
-That’s it. Keep the workspace folder out of git, keep taking notes, and if something breaks the logs from `npm run dev` usually spell out what to fix first.
+Keep the `workspace/` folder out of git unless you mean to. 
