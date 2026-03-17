@@ -17,7 +17,7 @@
 </script>
 
 <div class="grid gap-6">
-	<section class="rounded-[2rem] border border-white/10 bg-base-200/50 p-6">
+	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
 		<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Today</p>
 		<h1 class="mt-2 text-4xl font-semibold text-white">Work with intent, not tab sprawl.</h1>
 		<p class="mt-3 max-w-3xl text-base-content/65">
