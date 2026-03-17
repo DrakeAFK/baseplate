@@ -3,6 +3,7 @@
 	import type { PageData } from './$types';
 	import MarkdownEditor from '$lib/components/editor/MarkdownEditor.svelte';
 	import { formatDate, formatRelative } from '$lib/utils/dates';
+	import Logo from '$lib/assets/baseplate.svg'
 
 	let { data }: { data: PageData } = $props();
 
