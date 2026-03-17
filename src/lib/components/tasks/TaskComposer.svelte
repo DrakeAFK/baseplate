@@ -83,7 +83,7 @@
 		{submitLabel}
 	</button>
 {:else}
-	<div class="grid gap-4 rounded-[1.5rem] border border-white/10 bg-base-300/20 p-4">
+	<div class="grid gap-4 rounded-3xl border border-white/10 bg-base-300/20 p-4">
 		<div class="grid gap-3">
 			<input class="input input-bordered w-full" bind:value={title} placeholder={parentTaskId ? 'Subtask title' : 'Task title'} />
 			<textarea

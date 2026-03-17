@@ -31,7 +31,7 @@
 		<h1 class="text-4xl font-semibold text-base-content">Start a durable workspace</h1>
 	</div>
 
-	<div class="rounded-[2rem] border border-white/10 bg-base-200/70 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
+	<div class="rounded-4xl border border-white/10 bg-base-200/70 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
 		<div class="grid gap-5">
 			<label class="grid gap-2">
 				<span class="text-sm text-base-content/70">Title</span>

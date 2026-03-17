@@ -152,7 +152,7 @@
 			<div class="grid gap-2">
 				<textarea
 					bind:this={textarea}
-					class="textarea min-h-[34rem] w-full resize-y border-white/10 bg-base-300/40 font-mono text-sm leading-7"
+					class="textarea min-h-136 w-full resize-y border-white/10 bg-base-300/40 font-mono text-sm leading-7"
 					bind:value={draft}
 					oninput={scheduleSave}
 					onblur={() => void save()}

@@ -45,7 +45,7 @@
 </script>
 
 <div class="grid gap-6">
-	<section class="rounded-[2rem] border border-white/10 bg-base-200/50 p-6">
+	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<div class="max-w-3xl">
 				<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">{kindLabel}</p>

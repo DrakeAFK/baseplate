@@ -29,7 +29,7 @@
 </script>
 
 <div class="grid gap-6">
-	<section class="rounded-[2rem] border border-white/10 bg-base-200/50 p-6">
+	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
 		<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Search</p>
 		<h1 class="mt-2 text-4xl font-semibold text-white">Find the thing you barely remember.</h1>
 	</section>
@@ -57,7 +57,7 @@
 	<div class="grid gap-3">
 		{#if results.length}
 			{#each results as result}
-				<a class="rounded-[1.5rem] border border-white/10 bg-base-200/45 px-5 py-4 transition hover:border-info/30" href={result.href ?? '/search'}>
+				<a class="rounded-3xl border border-white/10 bg-base-200/45 px-5 py-4 transition hover:border-info/30" href={result.href ?? '/search'}>
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div>
 							<p class="font-medium text-white">{result.title}</p>
@@ -69,7 +69,7 @@
 				</a>
 			{/each}
 		{:else}
-			<div class="rounded-[1.5rem] border border-dashed border-white/10 bg-base-200/35 p-10 text-center text-base-content/55">
+			<div class="rounded-3xl border border-dashed border-white/10 bg-base-200/35 p-10 text-center text-base-content/55">
 				Search project names, task titles, note bodies, and meeting notes.
 			</div>
 		{/if}

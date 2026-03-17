@@ -200,9 +200,9 @@
 
 <svelte:window onkeydown={keyHandler} />
 
-<div class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.16),_transparent_28%),linear-gradient(180deg,#0b1117_0%,#101720_45%,#0c131b_100%)] text-base-content">
-	<div class="mx-auto grid min-h-screen max-w-[1800px] gap-6 px-4 py-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:px-6">
-		<aside data-sveltekit-preload-data="off" class="rounded-[2rem] border border-white/10 bg-base-200/55 p-5 shadow-[0_20px_100px_rgba(0,0,0,0.35)]">
+<div class="min-h-screen bg-[radial-gradient(circle_at_top,rgba(125,211,252,0.16),transparent_28%),linear-gradient(180deg,#0b1117_0%,#101720_45%,#0c131b_100%)] text-base-content">
+	<div class="mx-auto grid min-h-screen max-w-450 gap-6 px-4 py-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:px-6">
+		<aside data-sveltekit-preload-data="off" class="rounded-4xl border border-white/10 bg-base-200/55 p-5 shadow-[0_20px_100px_rgba(0,0,0,0.35)]">
 			<div class="mb-8 flex items-center justify-between gap-3">
 				<div class="flex items-center gap-3">
 					<img src={Logo} alt="Baseplate" class="w-10 h-auto" />
@@ -279,8 +279,8 @@
 		</aside>
 
 		<div class="grid min-h-screen grid-rows-[auto_1fr] gap-4">
-			<header class="flex flex-wrap items-center justify-between gap-3 rounded-[2rem] border border-white/10 bg-base-200/45 px-5 py-4 shadow-[0_20px_80px_rgba(0,0,0,0.18)]">
-				<button class="flex min-w-[22rem] items-center justify-between rounded-[1.4rem] border border-white/10 bg-base-300/25 px-4 py-3 text-left text-sm text-base-content/60" onclick={() => (paletteOpen = true)}>
+			<header class="flex flex-wrap items-center justify-between gap-3 rounded-4xl border border-white/10 bg-base-200/45 px-5 py-4 shadow-[0_20px_80px_rgba(0,0,0,0.18)]">
+				<button class="flex min-w-88 items-center justify-between rounded-[1.4rem] border border-white/10 bg-base-300/25 px-4 py-3 text-left text-sm text-base-content/60" onclick={() => (paletteOpen = true)}>
 					<span>Jump anywhere, create anything</span>
 					<kbd class="kbd kbd-sm border-white/10 bg-base-300/60">Ctrl K</kbd>
 				</button>
@@ -301,7 +301,7 @@
 
 	{#if activePulse}
 		<div class="fixed inset-0 z-40 bg-neutral/60 p-4 backdrop-blur-sm" role="button" tabindex="0" onclick={closeModal} onkeydown={(event) => event.key === 'Escape' && closeModal()}>
-			<div class="mx-auto mt-10 max-w-5xl rounded-[2rem] border border-white/10 bg-base-100 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.4)]" role="presentation" onclick={(event) => event.stopPropagation()}>
+			<div class="mx-auto mt-10 max-w-5xl rounded-4xl border border-white/10 bg-base-100 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.4)]" role="presentation" onclick={(event) => event.stopPropagation()}>
 				<div class="flex flex-wrap items-start justify-between gap-4">
 					<div>
 						<p class="text-xs uppercase tracking-[0.24em] text-base-content/45">Workspace pulse</p>
@@ -312,7 +312,7 @@
 				</div>
 
 				{#if activePulse.rows.length}
-					<div class="mt-6 max-h-[70vh] overflow-auto rounded-[1.5rem] border border-white/10 bg-base-200/45">
+					<div class="mt-6 max-h-[70vh] overflow-auto rounded-3xl border border-white/10 bg-base-200/45">
 						<div class="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_10rem] gap-4 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-[0.24em] text-base-content/45">
 							{#each activePulse.columns as heading}
 								<p>{heading}</p>
@@ -333,7 +333,7 @@
 						</div>
 					</div>
 				{:else}
-					<p class="mt-6 rounded-[1.5rem] border border-dashed border-white/10 bg-base-200/35 px-5 py-8 text-sm text-base-content/55">
+					<p class="mt-6 rounded-3xl border border-dashed border-white/10 bg-base-200/35 px-5 py-8 text-sm text-base-content/55">
 						{activePulse.emptyMessage}
 					</p>
 				{/if}
@@ -343,7 +343,7 @@
 
 	{#if modal}
 		<div class="fixed inset-0 z-40 bg-neutral/60 p-4 backdrop-blur-sm" role="button" tabindex="0" onclick={closeModal} onkeydown={(event) => event.key === 'Escape' && closeModal()}>
-			<div class="mx-auto mt-10 max-w-2xl rounded-[2rem] border border-white/10 bg-base-100 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.4)]" role="presentation" onclick={(event) => event.stopPropagation()}>
+			<div class="mx-auto mt-10 max-w-2xl rounded-4xl border border-white/10 bg-base-100 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.4)]" role="presentation" onclick={(event) => event.stopPropagation()}>
 				<h2 class="text-2xl font-semibold text-white">
 					{modal === 'project' ? 'Create project' : modal === 'task' ? 'Create task' : modal === 'meeting' ? 'Create meeting' : 'Create note'}
 				</h2>

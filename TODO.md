@@ -1,5 +1,3 @@
 # Bugs to fix and improvements to make  
 ## general  
-1. daily notes are lost each new day. for instance, going to notes page will show a note for yesterday. but when i click it it opens the today daily note. figure out why this is. i often like to reference past daily notes (e.g., search all daily notes for a term and see the day i made the note about it). 
-2. work on the UI of workspace pulse. currently everything is cramped in there (shown in screenshot attached to this prompt). 
-3. the markdown editor/preview bug still appears on the note for projects (e.g., at this endpoint: http://localhost:5173/projects/park-operations-digital-hub/notes/nte_bf5cfbec27104f2ea7a9b8bd). its the same behaviour as the daily note and inbox bug where typing and then a short pause will position the cursor at the very bottom of the page. i've cinfirmed that the /inbox markdown editor/preview is working as inteded so you should be able to just idnetify everywhere there's a markdown editor/preview and make sure its implemented the same as it is for the inbox and daily note. 
+1. 

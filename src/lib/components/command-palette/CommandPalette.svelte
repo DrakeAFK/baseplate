@@ -70,7 +70,7 @@
 					placeholder="Search commands, recent items, and navigation"
 				/>
 			</div>
-			<div class="max-h-[28rem] overflow-y-auto p-3">
+			<div class="max-h-112 overflow-y-auto p-3">
 				{#each filtered as item, index (item.id)}
 					<button
 						class={cn(
