@@ -39,8 +39,9 @@ All API routes (`/api/projects`, `/api/meetings`, `/api/notes`, `/api/tasks`, et
 
 ## Day-to-day flow
 ### Tabs
-- **Today** surfaces the focus dashboard built by `getOrCreateTodayDashboard`. Use it for quick entry points into what needs attention.
+- **Today** keeps the daily note front and center, with lightweight links back into the rest of the workspace.
 - **Projects** is where every project lives. Each card links to dashboards that show task trees, meeting history, and note collections. Once a project exists you can jump straight into meetings or notes, or use the “New” button to spin up tasks, meetings, or notes.
+- **Notes** is the note index: a filterable view of project notes, docs, decisions, meeting notes, daily notes, and inbox content that preserves the context of where each note lives.
 - **Search** runs full-text searches over the DB (`search_fts`) so you can find anything that has Markdown content or linked objects.
 - **Inbox** mirrors `workspace/inbox/inbox.md`. Drop thoughts in there, then triage them into projects or meetings.
 - **Settings** currently phases into workspace-level toggles and acts as the landing spot for future configuration.

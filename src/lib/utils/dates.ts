@@ -2,8 +2,21 @@ export function nowIso(): string {
 	return new Date().toISOString();
 }
 
-export function todayDate(): string {
-	return new Date().toISOString().slice(0, 10);
+function pad(value: number): string {
+	return String(value).padStart(2, '0');
+}
+
+function parseDateOnly(value: string): Date {
+	const [year, month, day] = value.split('-').map(Number);
+	return new Date(year, month - 1, day);
+}
+
+function isDateOnly(value: string): boolean {
+	return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+export function todayDate(date = new Date()): string {
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export function yearFromDate(date: string): string {
@@ -25,11 +38,11 @@ export function formatRelative(value: string): string {
 		return `${Math.max(1, Math.round(diff / hour))}h ago`;
 	}
 
-	return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value));
+	const parsed = isDateOnly(value) ? parseDateOnly(value) : new Date(value);
+	return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(parsed);
 }
 
 export function formatDate(value: string): string {
-	return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
-		new Date(value)
-	);
+	const parsed = isDateOnly(value) ? parseDateOnly(value) : new Date(value);
+	return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(parsed);
 }

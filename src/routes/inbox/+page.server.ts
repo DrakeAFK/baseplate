@@ -1,6 +1,8 @@
 import type { PageServerLoad } from './$types';
-import { getInboxDocument } from '$lib/server/services/workspace';
+import { getInboxDocument, touchRecentItem } from '$lib/server/services/workspace';
 
 export const load: PageServerLoad = async () => {
-	return getInboxDocument();
+	const document = getInboxDocument();
+	touchRecentItem('note', document.note.id);
+	return document;
 };

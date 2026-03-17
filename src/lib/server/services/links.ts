@@ -22,7 +22,7 @@ export function resolveObjectHref(type: SearchObjectType, id: string): string | 
 				 WHERE tasks.id = ?`
 			)
 			.get(id) as { id: string; slug: string } | undefined;
-		return row ? `/projects/${row.slug}?task=${row.id}` : null;
+		return row ? `/projects/${row.slug}#task-${row.id}` : null;
 	}
 
 	if (type === 'meeting') {
@@ -39,14 +39,15 @@ export function resolveObjectHref(type: SearchObjectType, id: string): string | 
 
 	const row = getDb()
 		.prepare(
-			`SELECT notes.id, notes.kind, projects.slug
+			`SELECT notes.id, notes.kind, projects.slug, daily_notes.note_date
 			 FROM notes
 			 LEFT JOIN projects ON projects.id = notes.project_id
+			 LEFT JOIN daily_notes ON daily_notes.note_id = notes.id
 			 WHERE notes.id = ?`
 		)
-		.get(id) as { id: string; kind: NoteKind; slug: string | null } | undefined;
+		.get(id) as { id: string; kind: NoteKind; slug: string | null; note_date: string | null } | undefined;
 	if (!row) return null;
-	if (row.kind === 'daily') return '/today';
+	if (row.kind === 'daily') return row.note_date ? `/notes/daily/${row.note_date}` : '/today';
 	if (row.kind === 'inbox') return '/inbox';
 	if (!row.slug) return null;
 	if (row.kind === 'meeting') {

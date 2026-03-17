@@ -8,7 +8,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>Baseplate</title>
+	<title>baseplate.</title>
 </svelte:head>
 
 <AppShell shell={data.shell}>

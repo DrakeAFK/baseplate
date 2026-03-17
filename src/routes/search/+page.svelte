@@ -6,7 +6,18 @@
 	let q = $state('');
 	let type = $state<'all' | 'project' | 'task' | 'note' | 'meeting'>('all');
 	let projectId = $state('');
-	let results = $state<Array<{ object_type: string; object_id: string; title: string; body: string; project_title: string; updated_at: string; project_slug: string | null }>>([]);
+	let results = $state<
+		Array<{
+			object_type: string;
+			object_id: string;
+			title: string;
+			body: string;
+			project_title: string;
+			updated_at: string;
+			project_slug: string | null;
+			href: string | null;
+		}>
+	>([]);
 
 	async function search() {
 		const params = new URLSearchParams({ q, type });
@@ -14,14 +25,6 @@
 		const response = await fetch(`/api/search?${params.toString()}`);
 		const payload = await response.json();
 		results = payload.results ?? [];
-	}
-
-	function hrefFor(result: (typeof results)[number]): string {
-		if (result.object_type === 'project' && result.project_slug) return `/projects/${result.project_slug}`;
-		if (result.object_type === 'meeting' && result.project_slug) return `/projects/${result.project_slug}/meetings/${result.object_id}`;
-		if (result.object_type === 'note') return result.project_slug ? `/projects/${result.project_slug}/notes/${result.object_id}` : '/today';
-		if (result.object_type === 'task' && result.project_slug) return `/projects/${result.project_slug}`;
-		return '/search';
 	}
 </script>
 
@@ -54,7 +57,7 @@
 	<div class="grid gap-3">
 		{#if results.length}
 			{#each results as result}
-				<a class="rounded-[1.5rem] border border-white/10 bg-base-200/45 px-5 py-4 transition hover:border-info/30" href={hrefFor(result)}>
+				<a class="rounded-[1.5rem] border border-white/10 bg-base-200/45 px-5 py-4 transition hover:border-info/30" href={result.href ?? '/search'}>
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div>
 							<p class="font-medium text-white">{result.title}</p>

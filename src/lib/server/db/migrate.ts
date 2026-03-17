@@ -1,5 +1,41 @@
 import type Database from 'better-sqlite3';
 
+function columnExists(db: Database.Database, tableName: string, columnName: string): boolean {
+	const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+	return columns.some((column) => column.name === columnName);
+}
+
+function backfillProjectSortPositions(db: Database.Database): void {
+	const projects = db
+		.prepare(
+			`SELECT id, status
+			 FROM projects
+			 ORDER BY
+			 	CASE status
+			 		WHEN 'active' THEN 0
+			 		WHEN 'on_hold' THEN 1
+			 		WHEN 'completed' THEN 2
+			 		WHEN 'archived' THEN 3
+			 		ELSE 4
+			 	END,
+			 	updated_at DESC,
+			 	created_at DESC,
+			 	title COLLATE NOCASE ASC`
+		)
+		.all() as Array<{ id: string; status: string }>;
+
+	const apply = db.transaction((rows: Array<{ id: string; status: string }>) => {
+		const nextByStatus = new Map<string, number>();
+		for (const row of rows) {
+			const nextPosition = nextByStatus.get(row.status) ?? 0;
+			db.prepare('UPDATE projects SET sort_position = ? WHERE id = ?').run(nextPosition, row.id);
+			nextByStatus.set(row.status, nextPosition + 1);
+		}
+	});
+
+	apply(projects);
+}
+
 export function migrate(db: Database.Database): void {
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS projects (
@@ -9,6 +45,7 @@ export function migrate(db: Database.Database): void {
 			kind TEXT NOT NULL CHECK (kind IN ('standard', 'perpetual')),
 			status TEXT NOT NULL CHECK (status IN ('active', 'on_hold', 'completed', 'archived')),
 			summary TEXT NOT NULL DEFAULT '',
+			sort_position INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			archived_at TEXT
@@ -121,4 +158,9 @@ export function migrate(db: Database.Database): void {
 		CREATE INDEX IF NOT EXISTS idx_object_links_to ON object_links(to_type, to_id);
 		CREATE INDEX IF NOT EXISTS idx_object_links_from ON object_links(from_type, from_id);
 	`);
+
+	if (!columnExists(db, 'projects', 'sort_position')) {
+		db.exec("ALTER TABLE projects ADD COLUMN sort_position INTEGER NOT NULL DEFAULT 0");
+		backfillProjectSortPositions(db);
+	}
 }

@@ -13,6 +13,7 @@ export interface Project {
 	kind: ProjectKind;
 	status: ProjectStatus;
 	summary: string;
+	sort_position: number;
 	created_at: string;
 	updated_at: string;
 	archived_at: string | null;
@@ -92,6 +93,7 @@ export interface SearchResult {
 	project_title: string;
 	updated_at: string;
 	project_slug: string | null;
+	href: string | null;
 }
 
 export interface BacklinkItem {
@@ -140,20 +142,59 @@ export interface ProjectDashboard {
 	}>;
 }
 
+export interface TodayShortcut {
+	id: string;
+	title: string;
+	description: string;
+	href: string;
+}
+
 export interface TodayDashboard {
 	daily: NoteDocument;
 	dailyMeta: DailyNoteMeta;
-	pinnedProjects: Project[];
-	activeTasks: Array<Task & { project: Project }>;
-	recentMeetings: Array<Meeting & { project: Project; excerpt: string }>;
-	recentNotes: Array<Note & { project: Project | null }>;
-	allProjects: Project[];
+	shortcuts: TodayShortcut[];
+}
+
+export interface NotesIndexItem {
+	note: Note;
+	project: Project | null;
+	dailyNoteDate: string | null;
+	href: string | null;
+}
+
+export type WorkspacePulseKey = 'projects' | 'tasks';
+
+export interface WorkspacePulseRow {
+	id: string;
+	href: string | null;
+	primary: string;
+	secondary: string;
+	tertiary: string;
+}
+
+export interface WorkspacePulseCollection {
+	key: WorkspacePulseKey;
+	label: string;
+	description: string;
+	count: number;
+	countLabel: string;
+	summary: string;
+	columns: [string, string, string];
+	emptyMessage: string;
+	rows: WorkspacePulseRow[];
 }
 
 export interface AppShellData {
 	workspaceDir: string;
 	activeProjects: Project[];
 	allProjects: Project[];
+	snapshot: {
+		projectCount: number;
+		openTaskCount: number;
+		noteCount: number;
+		meetingCount: number;
+	};
+	pulseCollections: WorkspacePulseCollection[];
 	recentItems: Array<{
 		object_type: SearchObjectType;
 		object_id: string;

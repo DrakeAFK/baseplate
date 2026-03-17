@@ -12,6 +12,7 @@ import type {
 	Meeting,
 	MeetingDocument,
 	Note,
+	NotesIndexItem,
 	NoteDocument,
 	NoteKind,
 	Project,
@@ -24,9 +25,10 @@ import type {
 	TaskPriority,
 	TaskStatus,
 	TaskTreeItem,
+	TodayShortcut,
 	TodayDashboard
 } from '$lib/types/models';
-import { nowIso, todayDate } from '$lib/utils/dates';
+import { formatDate, formatRelative, nowIso, todayDate } from '$lib/utils/dates';
 import { createId } from '$lib/utils/ids';
 import { toSlug, uniqueSlug } from '$lib/utils/slug';
 import { fileExists, readManagedMarkdown, writeManagedMarkdown } from '$lib/server/workspace/files';
@@ -58,6 +60,79 @@ function excerptForBody(body: string): string {
 function projectSlugById(id: string): string | null {
 	const row = getDb().prepare('SELECT slug FROM projects WHERE id = ?').get(id) as { slug: string } | undefined;
 	return row?.slug ?? null;
+}
+
+function projectStatusSortCase(column = 'projects.status'): string {
+	return `CASE ${column}
+		WHEN 'active' THEN 0
+		WHEN 'on_hold' THEN 1
+		WHEN 'completed' THEN 2
+		WHEN 'archived' THEN 3
+		ELSE 4
+	END`;
+}
+
+function labelFromSnakeCase(value: string): string {
+	return value.replaceAll('_', ' ');
+}
+
+function nextProjectSortPosition(status: ProjectStatus): number {
+	const row = getDb()
+		.prepare('SELECT COALESCE(MAX(sort_position), -1) AS max_position FROM projects WHERE status = ?')
+		.get(status) as { max_position: number };
+	return (row.max_position ?? -1) + 1;
+}
+
+function getWorkspaceSnapshot(): AppShellData['snapshot'] {
+	const db = getDb();
+	return {
+		projectCount: Number(
+			(
+				db.prepare("SELECT COUNT(*) AS count FROM projects WHERE archived_at IS NULL AND status != 'archived'").get() as {
+					count: number;
+				}
+			).count
+		),
+		openTaskCount: Number(
+			(
+				db.prepare("SELECT COUNT(*) AS count FROM tasks WHERE archived_at IS NULL AND status NOT IN ('done', 'cancelled')").get() as {
+					count: number;
+				}
+			).count
+		),
+		noteCount: Number(
+			(
+				db.prepare("SELECT COUNT(*) AS count FROM notes WHERE archived_at IS NULL AND kind IN ('note', 'doc', 'decision')").get() as {
+					count: number;
+				}
+			).count
+		),
+		meetingCount: Number(
+			(
+				db.prepare('SELECT COUNT(*) AS count FROM meetings WHERE archived_at IS NULL').get() as {
+					count: number;
+				}
+			).count
+		)
+	};
+}
+
+export function getProjectStatusCounts(): Record<ProjectStatus, number> {
+	const db = getDb();
+	const rows = db
+		.prepare(
+			`SELECT status, COUNT(*) AS count
+			 FROM projects
+			 GROUP BY status`
+		)
+		.all() as Array<{ status: ProjectStatus; count: number }>;
+
+	return {
+		active: rows.find((row) => row.status === 'active')?.count ?? 0,
+		on_hold: rows.find((row) => row.status === 'on_hold')?.count ?? 0,
+		completed: rows.find((row) => row.status === 'completed')?.count ?? 0,
+		archived: rows.find((row) => row.status === 'archived')?.count ?? 0
+	};
 }
 
 function ensureWorkspaceScaffold(): void {
@@ -208,7 +283,7 @@ export function listActiveProjects(limit = 8): Project[] {
 		.prepare(
 			`SELECT * FROM projects
 			 WHERE archived_at IS NULL AND status != 'archived'
-			 ORDER BY updated_at DESC
+			 ORDER BY ${projectStatusSortCase()}, sort_position ASC, updated_at DESC
 			 LIMIT ?`
 		)
 		.all(limit) as Project[];
@@ -225,8 +300,11 @@ export function listProjects(filters?: { status?: ProjectStatus; q?: string }): 
 		clauses.push('(title LIKE ? OR summary LIKE ?)');
 		params.push(`%${filters.q}%`, `%${filters.q}%`);
 	}
+	const orderBy = filters?.status
+		? 'sort_position ASC, updated_at DESC, title COLLATE NOCASE ASC'
+		: `${projectStatusSortCase()}, sort_position ASC, updated_at DESC`;
 	return getDb()
-		.prepare(`SELECT * FROM projects WHERE ${clauses.join(' AND ')} ORDER BY updated_at DESC`)
+		.prepare(`SELECT * FROM projects WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy}`)
 		.all(...params) as Project[];
 }
 
@@ -247,13 +325,14 @@ export function createProject(input: {
 		kind: input.kind,
 		status: 'active',
 		summary: input.summary ?? '',
+		sort_position: nextProjectSortPosition('active'),
 		created_at: nowIso(),
 		updated_at: nowIso(),
 		archived_at: null
 	};
 
 	db.prepare(
-		'INSERT INTO projects (id, slug, title, kind, status, summary, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)'
+		'INSERT INTO projects (id, slug, title, kind, status, summary, sort_position, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)'
 	).run(
 		project.id,
 		project.slug,
@@ -261,6 +340,7 @@ export function createProject(input: {
 		project.kind,
 		project.status,
 		project.summary,
+		project.sort_position,
 		project.created_at,
 		project.updated_at
 	);
@@ -315,6 +395,7 @@ export function updateProject(id: string, patch: Partial<Pick<Project, 'title' |
 	if (!existing) throw new Error('Project not found');
 	const db = getDb();
 	let slug = existing.slug;
+	const nextStatus = patch.status ?? existing.status;
 
 	if (patch.title && patch.title !== existing.title) {
 		const allSlugs = new Set(
@@ -345,22 +426,62 @@ export function updateProject(id: string, patch: Partial<Pick<Project, 'title' |
 		}
 	}
 
+	const archivedAt =
+		patch.status === undefined
+			? existing.archived_at
+			: patch.status === 'archived'
+				? existing.archived_at ?? nowIso()
+				: null;
+	const sortPosition = nextStatus === existing.status ? existing.sort_position : nextProjectSortPosition(nextStatus);
+
 	const updated: Project = {
 		...existing,
 		title: patch.title ?? existing.title,
 		summary: patch.summary ?? existing.summary,
-		status: patch.status ?? existing.status,
+		status: nextStatus,
 		kind: patch.kind ?? existing.kind,
 		slug,
+		sort_position: sortPosition,
 		updated_at: nowIso(),
-		archived_at: patch.status === 'archived' ? nowIso() : existing.archived_at
+		archived_at: archivedAt
 	};
 
 	db.prepare(
-		'UPDATE projects SET slug = ?, title = ?, summary = ?, status = ?, kind = ?, updated_at = ?, archived_at = ? WHERE id = ?'
-	).run(updated.slug, updated.title, updated.summary, updated.status, updated.kind, updated.updated_at, updated.archived_at, updated.id);
+		'UPDATE projects SET slug = ?, title = ?, summary = ?, status = ?, kind = ?, sort_position = ?, updated_at = ?, archived_at = ? WHERE id = ?'
+	).run(
+		updated.slug,
+		updated.title,
+		updated.summary,
+		updated.status,
+		updated.kind,
+		updated.sort_position,
+		updated.updated_at,
+		updated.archived_at,
+		updated.id
+	);
 	upsertSearchRow('project', updated.id, updated.title, updated.summary, updated.title, updated.updated_at, updated.slug);
 	return updated;
+}
+
+export function reorderProjects(status: ProjectStatus, projectIds: string[]): void {
+	const currentIds = listProjects({ status }).map((project) => project.id);
+	if (currentIds.length !== projectIds.length) {
+		throw new Error('Project order is out of date. Refresh and try again.');
+	}
+
+	const allowedIds = new Set(currentIds);
+	if (new Set(projectIds).size !== projectIds.length || projectIds.some((projectId) => !allowedIds.has(projectId))) {
+		throw new Error('Project order payload is invalid.');
+	}
+
+	const db = getDb();
+	const applyOrder = db.transaction((ids: string[]) => {
+		for (const [index, projectId] of ids.entries()) {
+			db.prepare('UPDATE projects SET sort_position = ? WHERE id = ? AND status = ?').run(index, projectId, status);
+		}
+	});
+
+	applyOrder(projectIds);
 }
 
 export function archiveProject(id: string, archived: boolean): void {
@@ -740,7 +861,7 @@ export function getProjectDashboard(slug: string): ProjectDashboard {
 				id: task.id,
 				title: task.title,
 				updatedAt: task.updated_at,
-				href: `/projects/${project.slug}?task=${task.id}`
+				href: `/projects/${project.slug}#task-${task.id}`
 			}))
 		]
 			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -772,7 +893,7 @@ export function getBacklinks(type: SearchObjectType, id: string): BacklinkItem[]
 					projectTitle: row.project_title,
 					projectSlug: row.slug,
 					snippet: excerptForBody(row.description_md),
-					href: `/projects/${row.slug}?task=${row.id}`
+					href: `/projects/${row.slug}#task-${row.id}`
 				});
 			}
 			continue;
@@ -789,19 +910,6 @@ export function getBacklinks(type: SearchObjectType, id: string): BacklinkItem[]
 			| { id: string; title: string; excerpt: string; kind: NoteKind; project_title: string | null; slug: string | null }
 			| undefined;
 		if (!row) continue;
-		const href =
-			row.kind === 'meeting'
-				? (() => {
-						const meeting = db.prepare('SELECT id FROM meetings WHERE note_id = ?').get(row.id) as { id: string } | undefined;
-						return meeting && row.slug ? `/projects/${row.slug}/meetings/${meeting.id}` : null;
-					})()
-				: row.kind === 'daily'
-					? '/today'
-					: row.kind === 'inbox'
-						? '/inbox'
-						: row.slug
-							? `/projects/${row.slug}/notes/${row.id}`
-							: null;
 		backlinks.push({
 			fromType: 'note',
 			fromId: row.id,
@@ -809,7 +917,7 @@ export function getBacklinks(type: SearchObjectType, id: string): BacklinkItem[]
 			projectTitle: row.project_title,
 			projectSlug: row.slug,
 			snippet: row.excerpt,
-			href
+			href: resolveObjectHref('note', row.id)
 		});
 	}
 	return backlinks;
@@ -858,166 +966,126 @@ export function getInboxDocument(): NoteDocument {
 	return getNoteDocument(row.id);
 }
 
+export function listNotesIndex(): NotesIndexItem[] {
+	const rows = getDb()
+		.prepare(
+			`SELECT notes.*, daily_notes.note_date AS daily_note_date,
+			        projects.id AS project__id, projects.slug AS project__slug, projects.title AS project__title,
+			        projects.kind AS project__kind, projects.status AS project__status, projects.summary AS project__summary,
+			        projects.sort_position AS project__sort_position, projects.created_at AS project__created_at,
+			        projects.updated_at AS project__updated_at, projects.archived_at AS project__archived_at
+			 FROM notes
+			 LEFT JOIN daily_notes ON daily_notes.note_id = notes.id
+			 LEFT JOIN projects ON projects.id = notes.project_id
+			 WHERE notes.archived_at IS NULL
+			 ORDER BY notes.updated_at DESC, notes.created_at DESC`
+		)
+		.all();
+
+	return rows.map((row) => {
+		const typed = row as Row;
+		return {
+			note: row as Note,
+			project: typed.project__id
+				? {
+						id: String(typed.project__id),
+						slug: String(typed.project__slug),
+						title: String(typed.project__title),
+						kind: typed.project__kind as ProjectKind,
+						status: typed.project__status as ProjectStatus,
+						summary: String(typed.project__summary),
+						sort_position: Number(typed.project__sort_position),
+						created_at: String(typed.project__created_at),
+						updated_at: String(typed.project__updated_at),
+						archived_at: (typed.project__archived_at as string | null) ?? null
+					}
+				: null,
+			dailyNoteDate: (typed.daily_note_date as string | null) ?? null,
+			href: resolveObjectHref('note', String(typed.id))
+		};
+	});
+}
+
+function buildTodayShortcuts(snapshot: AppShellData['snapshot']): TodayShortcut[] {
+	return [
+		{
+			id: 'projects',
+			title: 'Projects',
+			href: '/projects',
+			description: `${snapshot.projectCount} projects and ${snapshot.openTaskCount} open tasks live in the project dashboards.`
+		},
+		{
+			id: 'inbox',
+			title: 'Inbox',
+			href: '/inbox',
+			description: 'Capture raw thinking first, then promote it into a project, meeting, or note once it deserves structure.'
+		},
+		{
+			id: 'search',
+			title: 'Search',
+			href: '/search',
+			description: `Search across ${snapshot.noteCount} notes and ${snapshot.meetingCount} meetings when you know the context is already somewhere in the workspace.`
+		}
+	];
+}
+
 export function getOrCreateTodayDashboard(): TodayDashboard {
 	const noteDate = todayDate();
-	const db = getDb();
-	let dailyMeta = db.prepare('SELECT * FROM daily_notes WHERE note_date = ?').get(noteDate) as DailyNoteMeta | undefined;
-	if (!dailyMeta) {
-		const noteId = createId('nte');
-		const dailyId = createId('dly');
-		const createdAt = nowIso();
-		const filePath = getDailyNotePath(noteDate);
-		db.prepare(
-			'INSERT INTO notes (id, project_id, kind, title, file_path, excerpt, created_at, updated_at, archived_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NULL)'
-		).run(noteId, 'daily', noteDate, filePath, '', createdAt, createdAt);
-		db.prepare(
-			'INSERT INTO daily_notes (id, note_id, note_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-		).run(dailyId, noteId, noteDate, createdAt, createdAt);
-		writeManagedMarkdown(
-			filePath,
-			{
-				id: noteId,
-				kind: 'daily',
-				title: noteDate,
-				note_date: noteDate,
-				created_at: createdAt,
-				updated_at: createdAt
-			},
-			defaultTemplate('daily', noteDate)
-		);
-		reindexFile(filePath);
-		dailyMeta = { id: dailyId, note_id: noteId, note_date: noteDate, created_at: createdAt, updated_at: createdAt };
-	}
-
-	const pinnedProjects = db
-		.prepare(
-			`SELECT projects.*
-			 FROM daily_focus
-			 JOIN projects ON projects.id = daily_focus.project_id
-			 WHERE daily_focus.daily_note_id = ?
-			 ORDER BY daily_focus.position ASC`
-		)
-		.all(dailyMeta.id) as Project[];
-	const activeTasks = db
-		.prepare(
-			`SELECT tasks.*, projects.id AS project__id, projects.slug AS project__slug, projects.title AS project__title,
-			        projects.kind AS project__kind, projects.status AS project__status, projects.summary AS project__summary,
-			        projects.created_at AS project__created_at, projects.updated_at AS project__updated_at, projects.archived_at AS project__archived_at
-			 FROM tasks
-			 JOIN projects ON projects.id = tasks.project_id
-			 WHERE tasks.archived_at IS NULL AND (
-			     tasks.status IN ('in_progress', 'blocked')
-			     OR tasks.scheduled_for = ?
-			     OR tasks.due_at = ?
-			 )
-			 ORDER BY tasks.updated_at DESC
-			 LIMIT 12`
-		)
-		.all(noteDate, noteDate)
-		.map((row) => {
-			const typed = row as Row;
-			return {
-				...(row as Task),
-				project: {
-					id: String(typed.project__id),
-					slug: String(typed.project__slug),
-					title: String(typed.project__title),
-					kind: typed.project__kind as ProjectKind,
-					status: typed.project__status as ProjectStatus,
-					summary: String(typed.project__summary),
-					created_at: String(typed.project__created_at),
-					updated_at: String(typed.project__updated_at),
-					archived_at: (typed.project__archived_at as string | null) ?? null
-				}
-			};
-		}) as Array<Task & { project: Project }>;
-	const recentMeetings = db
-		.prepare(
-			`SELECT meetings.*, notes.excerpt, projects.id AS project__id, projects.slug AS project__slug, projects.title AS project__title,
-			        projects.kind AS project__kind, projects.status AS project__status, projects.summary AS project__summary,
-			        projects.created_at AS project__created_at, projects.updated_at AS project__updated_at, projects.archived_at AS project__archived_at
-			 FROM meetings
-			 JOIN notes ON notes.id = meetings.note_id
-			 JOIN projects ON projects.id = meetings.project_id
-			 WHERE meetings.archived_at IS NULL
-			 ORDER BY meetings.meeting_date DESC, meetings.updated_at DESC
-			 LIMIT 8`
-		)
-		.all()
-		.map((row) => {
-			const typed = row as Row;
-			return {
-				...(row as Meeting),
-				excerpt: String(typed.excerpt ?? ''),
-				project: {
-					id: String(typed.project__id),
-					slug: String(typed.project__slug),
-					title: String(typed.project__title),
-					kind: typed.project__kind as ProjectKind,
-					status: typed.project__status as ProjectStatus,
-					summary: String(typed.project__summary),
-					created_at: String(typed.project__created_at),
-					updated_at: String(typed.project__updated_at),
-					archived_at: (typed.project__archived_at as string | null) ?? null
-				}
-			};
-		}) as Array<Meeting & { project: Project; excerpt: string }>;
-	const recentNotes = db
-		.prepare(
-			`SELECT notes.*, projects.id AS project__id, projects.slug AS project__slug, projects.title AS project__title,
-			        projects.kind AS project__kind, projects.status AS project__status, projects.summary AS project__summary,
-			        projects.created_at AS project__created_at, projects.updated_at AS project__updated_at, projects.archived_at AS project__archived_at
-			 FROM notes
-			 LEFT JOIN projects ON projects.id = notes.project_id
-			 WHERE notes.kind IN ('project_home', 'note', 'doc', 'decision') AND notes.archived_at IS NULL
-			 ORDER BY notes.updated_at DESC
-			 LIMIT 8`
-		)
-		.all()
-		.map((row) => {
-			const typed = row as Row;
-			return {
-				...(row as Note),
-				project: typed.project__id
-					? {
-							id: String(typed.project__id),
-							slug: String(typed.project__slug),
-							title: String(typed.project__title),
-							kind: typed.project__kind as ProjectKind,
-							status: typed.project__status as ProjectStatus,
-							summary: String(typed.project__summary),
-							created_at: String(typed.project__created_at),
-							updated_at: String(typed.project__updated_at),
-							archived_at: (typed.project__archived_at as string | null) ?? null
-						}
-					: null
-			};
-		}) as Array<Note & { project: Project | null }>;
+	const dailyMeta = getOrCreateDailyNoteMeta(noteDate);
 
 	return {
 		daily: getNoteDocument(dailyMeta.note_id),
 		dailyMeta,
-		pinnedProjects,
-		activeTasks,
-		recentMeetings,
-		recentNotes,
-		allProjects: listActiveProjects(50)
+		shortcuts: buildTodayShortcuts(getWorkspaceSnapshot())
 	};
 }
 
-export function setProjectFocus(projectId: string, active: boolean): void {
-	const daily = getOrCreateTodayDashboard();
+function getDailyNoteMetaByDate(noteDate: string): DailyNoteMeta | null {
+	return (getDb().prepare('SELECT * FROM daily_notes WHERE note_date = ?').get(noteDate) as DailyNoteMeta | undefined) ?? null;
+}
+
+function getOrCreateDailyNoteMeta(noteDate: string): DailyNoteMeta {
+	const existing = getDailyNoteMetaByDate(noteDate);
+	if (existing) return existing;
+
 	const db = getDb();
-	if (active) {
-		const count = db
-			.prepare('SELECT COUNT(*) AS count FROM daily_focus WHERE daily_note_id = ?')
-			.get(daily.dailyMeta.id) as { count: number };
-		db.prepare(
-			'INSERT OR REPLACE INTO daily_focus (daily_note_id, project_id, position) VALUES (?, ?, ?)'
-		).run(daily.dailyMeta.id, projectId, count.count);
-	} else {
-		db.prepare('DELETE FROM daily_focus WHERE daily_note_id = ? AND project_id = ?').run(daily.dailyMeta.id, projectId);
-	}
+	const noteId = createId('nte');
+	const dailyId = createId('dly');
+	const createdAt = nowIso();
+	const filePath = getDailyNotePath(noteDate);
+	db.prepare(
+		'INSERT INTO notes (id, project_id, kind, title, file_path, excerpt, created_at, updated_at, archived_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NULL)'
+	).run(noteId, 'daily', noteDate, filePath, '', createdAt, createdAt);
+	db.prepare('INSERT INTO daily_notes (id, note_id, note_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+		dailyId,
+		noteId,
+		noteDate,
+		createdAt,
+		createdAt
+	);
+	writeManagedMarkdown(
+		filePath,
+		{
+			id: noteId,
+			kind: 'daily',
+			title: noteDate,
+			note_date: noteDate,
+			created_at: createdAt,
+			updated_at: createdAt
+		},
+		defaultTemplate('daily', noteDate)
+	);
+	reindexFile(filePath);
+	return { id: dailyId, note_id: noteId, note_date: noteDate, created_at: createdAt, updated_at: createdAt };
+}
+
+export function getDailyNoteDocumentByDate(noteDate: string): { daily: NoteDocument; dailyMeta: DailyNoteMeta } {
+	const dailyMeta = getDailyNoteMetaByDate(noteDate);
+	if (!dailyMeta) throw new Error('Daily note not found');
+	return {
+		daily: getNoteDocument(dailyMeta.note_id),
+		dailyMeta
+	};
 }
 
 export function searchWorkspace(query: string, filters?: { type?: SearchObjectType | 'all'; projectId?: string }): SearchResult[] {
@@ -1031,15 +1099,20 @@ export function searchWorkspace(query: string, filters?: { type?: SearchObjectTy
 			 ORDER BY rank, updated_at DESC
 			 LIMIT 30`
 		)
-		.all(`${query.replace(/"/g, '""')}*`) as SearchResult[];
-	return rows.filter((row) => {
-		if (filters?.type && filters.type !== 'all' && row.object_type !== filters.type) return false;
-		if (filters?.projectId) {
-			const project = row.project_slug ? getProjectBySlug(row.project_slug) : null;
-			if (project?.id !== filters.projectId) return false;
-		}
-		return true;
-	});
+		.all(`${query.replace(/"/g, '""')}*`) as Omit<SearchResult, 'href'>[];
+	return rows
+		.filter((row) => {
+			if (filters?.type && filters.type !== 'all' && row.object_type !== filters.type) return false;
+			if (filters?.projectId) {
+				const project = row.project_slug ? getProjectBySlug(row.project_slug) : null;
+				if (project?.id !== filters.projectId) return false;
+			}
+			return true;
+		})
+		.map((row) => ({
+			...row,
+			href: resolveObjectHref(row.object_type, row.object_id)
+		}));
 }
 
 function upsertRecentItem(objectType: SearchObjectType, objectId: string): void {
@@ -1054,8 +1127,109 @@ export function touchRecentItem(objectType: SearchObjectType, objectId: string):
 	upsertRecentItem(objectType, objectId);
 }
 
+function getShellPulseCollections(snapshot: AppShellData['snapshot']): AppShellData['pulseCollections'] {
+	const db = getDb();
+	const projectCounts = getProjectStatusCounts();
+	const taskCountRows = db
+		.prepare(
+			`SELECT status, COUNT(*) AS count
+			 FROM tasks
+			 WHERE archived_at IS NULL AND status IN ('todo', 'in_progress', 'blocked')
+			 GROUP BY status`
+		)
+		.all() as Array<{ status: TaskStatus; count: number }>;
+	const taskCounts = {
+		todo: taskCountRows.find((row) => row.status === 'todo')?.count ?? 0,
+		in_progress: taskCountRows.find((row) => row.status === 'in_progress')?.count ?? 0,
+		blocked: taskCountRows.find((row) => row.status === 'blocked')?.count ?? 0
+	};
+
+	const projects = db
+		.prepare(
+			`SELECT id, slug, title, kind, status, summary, updated_at
+			 FROM projects
+			 WHERE archived_at IS NULL AND status IN ('active', 'on_hold')
+			 ORDER BY ${projectStatusSortCase()}, sort_position ASC, updated_at DESC`
+		)
+		.all() as Array<Pick<Project, 'id' | 'slug' | 'title' | 'kind' | 'status' | 'summary' | 'updated_at'>>;
+
+	const tasks = db
+		.prepare(
+			`SELECT tasks.id, tasks.title, tasks.status, tasks.priority, tasks.scheduled_for, tasks.due_at, tasks.updated_at,
+			        projects.slug AS project_slug, projects.title AS project_title
+			 FROM tasks
+			 JOIN projects ON projects.id = tasks.project_id
+			 WHERE tasks.archived_at IS NULL AND tasks.status IN ('todo', 'in_progress', 'blocked')
+			 ORDER BY
+			 	CASE tasks.status
+			 		WHEN 'in_progress' THEN 0
+			 		WHEN 'blocked' THEN 1
+			 		WHEN 'todo' THEN 2
+			 		ELSE 3
+			 	END,
+			 	CASE WHEN tasks.due_at IS NULL THEN 1 ELSE 0 END,
+			 	tasks.due_at ASC,
+			 	tasks.updated_at DESC`
+		)
+		.all() as Array<{
+			id: string;
+			title: string;
+			status: TaskStatus;
+			priority: TaskPriority;
+			scheduled_for: string | null;
+			due_at: string | null;
+			updated_at: string;
+			project_slug: string;
+			project_title: string;
+		}>;
+
+	return [
+		{
+			key: 'projects',
+			label: 'Projects',
+			description: 'Only active and on-hold projects live here so the pulse stays about current work.',
+			count: projectCounts.active,
+			countLabel: 'active',
+			summary: `${projectCounts.on_hold} on hold`,
+			columns: ['Project', 'Summary', 'State'],
+			emptyMessage: 'Projects appear here once you start creating durable work.',
+			rows: projects.map((project) => ({
+				id: project.id,
+				href: `/projects/${project.slug}`,
+				primary: project.title,
+				secondary: project.summary || `${labelFromSnakeCase(project.kind)} project`,
+				tertiary: `${labelFromSnakeCase(project.status)} · ${formatRelative(project.updated_at)}`
+			}))
+		},
+		{
+			key: 'tasks',
+			label: 'Open tasks',
+			description: 'Only todo, in-progress, and blocked tasks show up here.',
+			count: snapshot.openTaskCount,
+			countLabel: 'open',
+			summary: `${taskCounts.todo} todo · ${taskCounts.in_progress} in progress · ${taskCounts.blocked} blocked`,
+			columns: ['Task', 'Project', 'State'],
+			emptyMessage: 'Open tasks show up here as soon as they exist.',
+			rows: tasks.map((task) => ({
+				id: task.id,
+				href: `/projects/${task.project_slug}#task-${task.id}`,
+				primary: task.title,
+				secondary: task.project_title,
+				tertiary: `${labelFromSnakeCase(task.status)} · ${
+					task.due_at
+						? `due ${formatDate(task.due_at)}`
+						: task.scheduled_for
+							? `scheduled ${formatDate(task.scheduled_for)}`
+							: `${labelFromSnakeCase(task.priority)} priority`
+				}`
+			}))
+		}
+	];
+}
+
 export function getShellData(): AppShellData {
 	const db = getDb();
+	const snapshot = getWorkspaceSnapshot();
 	const recent = db
 		.prepare(
 			`SELECT recent_items.*, search_fts.title, search_fts.project_slug
@@ -1080,10 +1254,13 @@ export function getShellData(): AppShellData {
 		workspaceDir: getWorkspaceDir(),
 		activeProjects: listActiveProjects(),
 		allProjects: listActiveProjects(50),
+		snapshot,
+		pulseCollections: getShellPulseCollections(snapshot),
 		recentItems: recent,
 		commandPaletteItems: [
 			{ id: 'go-today', group: 'Navigate', label: 'Go to Today', href: '/today', action: null },
 			{ id: 'go-projects', group: 'Navigate', label: 'Go to Projects', href: '/projects', action: null },
+			{ id: 'go-notes', group: 'Navigate', label: 'Go to Notes', href: '/notes', action: null },
 			{ id: 'go-search', group: 'Navigate', label: 'Go to Search', href: '/search', action: null },
 			{ id: 'go-inbox', group: 'Navigate', label: 'Go to Inbox', href: '/inbox', action: null },
 			{ id: 'create-project', group: 'Create', label: 'Create Project', href: null, action: 'openCreateProject' },

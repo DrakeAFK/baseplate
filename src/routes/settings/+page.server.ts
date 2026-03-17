@@ -6,6 +6,7 @@ export const load: PageServerLoad = async () => {
 	return {
 		workspaceDir: shell.workspaceDir,
 		databaseStatus: 'healthy',
-		appInfo: 'Local-first engineering workspace'
+		appInfo: 'Local-first engineering workspace',
+		snapshot: shell.snapshot
 	};
 };

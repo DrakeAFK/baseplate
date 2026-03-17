@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 
 	let {
 		value,
@@ -19,41 +19,94 @@
 
 	let draft = $state(untrack(() => value));
 	let lastSavedValue = $state(untrack(() => value));
+	let lastSeenValue = $state(untrack(() => value));
 	let renderedHtml = $state(untrack(() => previewHtml));
 	let mode: 'edit' | 'preview' | 'split' = $state('split');
 	let saveState: 'idle' | 'saving' | 'saved' | 'error' = $state('idle');
 	let timer: ReturnType<typeof setTimeout> | null = null;
+	let queuedSave = $state(false);
+	let textarea = $state<HTMLTextAreaElement | null>(null);
+
+	type SelectionSnapshot = {
+		start: number;
+		end: number;
+		direction: 'forward' | 'backward' | 'none';
+		scrollTop: number;
+	} | null;
+
+	function captureSelection(): SelectionSnapshot {
+		if (!textarea || document.activeElement !== textarea) return null;
+		return {
+			start: textarea.selectionStart,
+			end: textarea.selectionEnd,
+			direction: textarea.selectionDirection ?? 'none',
+			scrollTop: textarea.scrollTop
+		};
+	}
+
+	async function restoreSelection(snapshot: SelectionSnapshot): Promise<void> {
+		if (!snapshot) return;
+		await tick();
+		if (!textarea) return;
+		const start = Math.min(snapshot.start, textarea.value.length);
+		const end = Math.min(snapshot.end, textarea.value.length);
+		textarea.focus({ preventScroll: true });
+		textarea.setSelectionRange(start, end, snapshot.direction);
+		textarea.scrollTop = snapshot.scrollTop;
+	}
 
 	$effect(() => {
-		if (value !== lastSavedValue) {
-			draft = value;
+		if (value !== lastSeenValue) {
+			const hasLocalEdits = draft !== lastSavedValue;
+			const selection = captureSelection();
+			lastSeenValue = value;
 			lastSavedValue = value;
+			if (!hasLocalEdits) {
+				draft = value;
+				void restoreSelection(selection);
+			}
 		}
 		renderedHtml = previewHtml;
 	});
 
-	function scheduleSave() {
+	function scheduleSave(): void {
 		if (timer) clearTimeout(timer);
-		timer = setTimeout(save, 650);
+		timer = setTimeout(() => void save(), 450);
 	}
 
-	async function save() {
-		if (draft === value) return;
+	async function save(): Promise<void> {
+		if (saveState === 'saving') {
+			queuedSave = true;
+			return;
+		}
+
+		if (draft === lastSavedValue) return;
+
 		saveState = 'saving';
+		queuedSave = false;
+		const snapshot = draft;
+
 		try {
 			const response = await fetch(saveUrl, {
 				method,
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ body: draft })
+				body: JSON.stringify({ body: snapshot })
 			});
 			const payload = await response.json().catch(() => null);
 			if (!response.ok) {
 				saveState = 'error';
 				return;
 			}
-			value = payload?.document?.body ?? draft;
-			lastSavedValue = value;
-			draft = value;
+
+			const nextValue = payload?.document?.body ?? snapshot;
+			const changedDuringSave = draft !== snapshot;
+			const selection = captureSelection();
+			lastSavedValue = nextValue;
+			lastSeenValue = nextValue;
+			if (!changedDuringSave) {
+				draft = nextValue;
+				void restoreSelection(selection);
+			}
 			renderedHtml = payload?.document?.html ?? renderedHtml;
 			onSaved(payload);
 			saveState = 'saved';
@@ -63,6 +116,11 @@
 		} catch {
 			saveState = 'error';
 			return;
+		}
+
+		if (queuedSave || draft !== lastSavedValue) {
+			queuedSave = false;
+			void save();
 		}
 	}
 
@@ -75,7 +133,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<div>
 			<p class="text-xs uppercase tracking-[0.3em] text-base-content/50">{label}</p>
-			<p class="text-sm text-base-content/60">Autosaves in place. Stable links and frontmatter are preserved.</p>
+			<p class="text-sm text-base-content/60">Autosaves in place. Markdown stays on disk, preview stays close, and edits are not reloaded out from under you.</p>
 		</div>
 		<div class="flex items-center gap-2">
 			<div class="join">
@@ -89,14 +147,18 @@
 		</div>
 	</div>
 
-	<div class="grid gap-4 lg:grid-cols-2">
+	<div class={`grid gap-4 ${mode === 'split' ? 'lg:grid-cols-2' : ''}`}>
 		{#if mode !== 'preview'}
-			<textarea
-				class="textarea min-h-[28rem] w-full resize-y border-white/10 bg-base-300/40 font-mono text-sm leading-7"
-				bind:value={draft}
-				oninput={scheduleSave}
-				onblur={save}
-			></textarea>
+			<div class="grid gap-2">
+				<textarea
+					bind:this={textarea}
+					class="textarea min-h-[34rem] w-full resize-y border-white/10 bg-base-300/40 font-mono text-sm leading-7"
+					bind:value={draft}
+					oninput={scheduleSave}
+					onblur={() => void save()}
+				></textarea>
+				<p class="text-xs text-base-content/45">Markdown autosaves after you pause and again when you leave the field.</p>
+			</div>
 		{/if}
 
 		{#if mode !== 'edit'}
