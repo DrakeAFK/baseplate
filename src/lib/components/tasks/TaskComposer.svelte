@@ -83,8 +83,9 @@
 		{submitLabel}
 	</button>
 {:else}
-	<div class="grid gap-4 rounded-3xl border border-white/10 bg-base-300/20 p-4">
+	<div class="bp-panel-soft grid gap-4 p-4">
 		<div class="grid gap-3">
+			<p class="bp-kicker">{parentTaskId ? 'Subtask' : 'New task'}</p>
 			<input class="input input-bordered w-full" bind:value={title} placeholder={parentTaskId ? 'Subtask title' : 'Task title'} />
 			<textarea
 				class="textarea textarea-bordered min-h-24 w-full"
@@ -124,10 +125,7 @@
 			<p class="text-sm text-error">{error}</p>
 		{/if}
 
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<p class="text-sm text-base-content/55">
-				{parentTaskId ? 'Subtasks inherit the project and stay attached to their parent task.' : 'Tasks stay local-first in SQLite and the project workspace.'}
-			</p>
+		<div class="flex flex-wrap items-center justify-end gap-2">
 			<div class="flex gap-2">
 				{#if compact}
 					<button

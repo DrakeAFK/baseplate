@@ -99,8 +99,8 @@
 <article
 	id={`task-${item.id}`}
 	class={cn(
-		'grid gap-4 rounded-[1.65rem] border border-white/10 bg-base-300/25 p-4 scroll-mt-28 transition',
-		isHighlighted && 'border-primary/60 bg-base-300/45 shadow-[0_18px_45px_rgba(125,211,252,0.12)]'
+		'bp-panel-soft grid gap-4 p-4 scroll-mt-28 transition',
+		isHighlighted && 'border-primary/60 bg-white/10 shadow-[0_18px_45px_rgba(125,211,252,0.12)]'
 	)}
 	style={`margin-left:${depth * 14}px`}
 >
@@ -108,12 +108,12 @@
 		<div class="min-w-0 flex-1">
 			<div class="flex flex-wrap items-center gap-2">
 				<span class="badge badge-outline border-white/10 uppercase">{status.replaceAll('_', ' ')}</span>
-				<span class="text-xs text-base-content/50">Updated {formatRelative(item.updated_at)}</span>
+				<span class="bp-meta">Updated {formatRelative(item.updated_at)}</span>
 				{#if item.children.length}
-					<span class="text-xs text-base-content/45">{item.children.length} subtasks</span>
+					<span class="bp-meta">{item.children.length} subtasks</span>
 				{/if}
 			</div>
-			<input class="input input-bordered mt-3 w-full text-base font-medium" bind:value={title} />
+			<input class="input input-bordered mt-3 h-[3.25rem] w-full text-base font-medium" bind:value={title} />
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2">
@@ -134,7 +134,7 @@
 
 	<div class="grid gap-3 md:grid-cols-4">
 		<label class="grid gap-2">
-			<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Status</span>
+			<span class="bp-meta">Status</span>
 			<select class="select select-bordered w-full" bind:value={status}>
 				{#each statusOptions as option}
 					<option value={option}>{option.replaceAll('_', ' ')}</option>
@@ -142,7 +142,7 @@
 			</select>
 		</label>
 		<label class="grid gap-2">
-			<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Priority</span>
+			<span class="bp-meta">Priority</span>
 			<select class="select select-bordered w-full" bind:value={priority}>
 				{#each priorityOptions as option}
 					<option value={option}>{option}</option>
@@ -150,18 +150,18 @@
 			</select>
 		</label>
 		<label class="grid gap-2">
-			<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Scheduled</span>
+			<span class="bp-meta">Scheduled</span>
 			<input class="input input-bordered w-full" type="date" bind:value={scheduledFor} />
 		</label>
 		<label class="grid gap-2">
-			<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Due</span>
+			<span class="bp-meta">Due</span>
 			<input class="input input-bordered w-full" type="date" bind:value={dueAt} />
 		</label>
 	</div>
 
 	{#if detailsOpen}
 		<label class="grid gap-2">
-			<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Working notes</span>
+			<span class="bp-meta">Working notes</span>
 			<textarea
 				class="textarea textarea-bordered min-h-28 w-full"
 				bind:value={description}

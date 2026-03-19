@@ -1,3 +1,3 @@
 # Bugs to fix and improvements to make  
-## general  
-1. 
+## UI Overhaul 
+- The app currently looks and functions well. However it does feel a little cramped and like things are cluttered all over the place. There's also little lines of text scattered throughout that say things like 'stored in sqlite' or something that shouldn't be there. You are the best UI Designer YC money can buy. Your job here is to completely overhaul the UI without breaking the app or altering app functionality. You need to make this app feel more solid. Think discord meets notion and they have an app baby and supabase meets linear and they have an app baby and those two app babies make their own app baby. Clean, effective, big YC money, 100% adoption rate. No weird fluff text or things just to fill space. 

@@ -59,12 +59,12 @@
 	}
 </script>
 
-<div class="grid gap-6">
-	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
-		<div class="flex flex-wrap items-start justify-between gap-4">
+<div class="bp-page">
+	<section class="bp-hero p-6 md:p-7">
+		<div class="bp-toolbar">
 			<div class="grid max-w-3xl gap-3">
-				<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Meeting</p>
-				<input class="input input-bordered w-full text-3xl font-semibold text-white" bind:value={title} />
+				<p class="bp-kicker">Meeting</p>
+				<input class="input input-bordered h-14 w-full text-3xl font-semibold text-white" bind:value={title} />
 				<div class="grid gap-3 md:grid-cols-[14rem_auto]">
 					<input class="input input-bordered" type="date" bind:value={meetingDate} />
 					<p class="self-center text-base-content/65">{document.project.title} · Updated {formatRelative(document.meeting.updated_at)}</p>
@@ -74,12 +74,12 @@
 				<button class="btn btn-sm btn-primary" onclick={saveMeta} disabled={saving || !title.trim()}>
 					{saving ? 'Saving…' : 'Save details'}
 				</button>
-				<button class="btn btn-sm" onclick={extractTasks}>Extract tasks</button>
-				<a class="btn btn-sm" href={`/projects/${document.project.slug}`}>Back to dashboard</a>
+				<button class="btn btn-sm btn-ghost" onclick={extractTasks}>Extract tasks</button>
+				<a class="btn btn-sm btn-ghost" href={`/projects/${document.project.slug}`}>Back to dashboard</a>
 			</div>
 		</div>
 		{#if error}
-			<p class="mt-3 text-sm text-error">{error}</p>
+			<p class="mt-4 text-sm text-error">{error}</p>
 		{/if}
 	</section>
 
@@ -98,41 +98,43 @@
 	/>
 
 	<div class="grid gap-6 xl:grid-cols-2">
-		<div class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-			<h2 class="text-xl font-semibold text-white">Tasks extracted from this meeting</h2>
-			<div class="mt-4 grid gap-3">
-				{#if document.relatedTasks.length}
-					{#each document.relatedTasks as task}
-						<a class="rounded-[1.2rem] border border-white/10 bg-base-300/25 px-4 py-3 transition hover:border-info/30" href={`/projects/${document.project.slug}#task-${task.id}`}>
-							<p class="font-medium text-white">{task.title}</p>
-							<p class="text-sm text-base-content/55">{task.status.replaceAll('_', ' ')} · {task.priority}</p>
-						</a>
-					{/each}
-				{:else}
-					<p class="rounded-[1.2rem] border border-dashed border-white/10 bg-base-300/15 px-4 py-5 text-sm text-base-content/45">
-						Checkbox items extracted from the meeting note will appear here.
-					</p>
-				{/if}
+		<section class="bp-panel p-5">
+			<div class="relative z-10">
+				<h2 class="text-xl font-semibold text-white">Extracted tasks</h2>
+				<div class="mt-4 bp-list">
+					{#if document.relatedTasks.length}
+						{#each document.relatedTasks as task}
+							<a class="bp-list-card" href={`/projects/${document.project.slug}#task-${task.id}`}>
+								<p class="font-medium text-white">{task.title}</p>
+								<p class="mt-1 text-sm text-base-content/55">{task.status.replaceAll('_', ' ')} · {task.priority}</p>
+							</a>
+						{/each}
+					{:else}
+						<p class="bp-empty">Checkbox items extracted from this meeting appear here.</p>
+					{/if}
+				</div>
 			</div>
-		</div>
+		</section>
 
-		<div class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-			<h2 class="text-xl font-semibold text-white">Backlinks</h2>
-			<div class="mt-4 grid gap-3">
-				{#if document.backlinks.length}
-					{#each document.backlinks as backlink}
-						<a class="rounded-[1.2rem] border border-white/10 bg-base-300/25 px-4 py-3 transition hover:border-info/30" href={backlink.href ?? `/projects/${document.project.slug}`}>
-							<p class="font-medium text-white">{backlink.title}</p>
-							<p class="text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
-							<p class="text-sm text-base-content/45">{backlink.snippet || 'No summary yet.'}</p>
-						</a>
-					{/each}
-				{:else}
-					<p class="rounded-[1.2rem] border border-dashed border-white/10 bg-base-300/15 px-4 py-5 text-sm text-base-content/45">
-						References back into this meeting will appear here.
-					</p>
-				{/if}
+		<section class="bp-panel p-5">
+			<div class="relative z-10">
+				<h2 class="text-xl font-semibold text-white">Backlinks</h2>
+				<div class="mt-4 bp-list">
+					{#if document.backlinks.length}
+						{#each document.backlinks as backlink}
+							<a class="bp-list-card" href={backlink.href ?? `/projects/${document.project.slug}`}>
+								<p class="font-medium text-white">{backlink.title}</p>
+								<p class="mt-1 text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
+								{#if backlink.snippet}
+									<p class="mt-2 text-sm text-base-content/45">{backlink.snippet}</p>
+								{/if}
+							</a>
+						{/each}
+					{:else}
+						<p class="bp-empty">References to this meeting show up here.</p>
+					{/if}
+				</div>
 			</div>
-		</div>
+		</section>
 	</div>
 </div>

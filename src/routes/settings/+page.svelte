@@ -21,68 +21,68 @@
 	}
 </script>
 
-<div class="grid max-w-5xl gap-6">
-	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
-		<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Settings</p>
-		<h1 class="mt-2 text-4xl font-semibold text-white">Workspace maintenance</h1>
-		<p class="mt-3 max-w-3xl text-base-content/65">
-			This page is for operational state: where your workspace lives, whether the database is healthy, and the maintenance actions that affect indexing.
-		</p>
+<div class="bp-page max-w-6xl">
+	<section class="bp-hero p-6 md:p-7">
+		<div>
+			<p class="bp-kicker">Settings</p>
+			<h1 class="bp-page-title">Settings</h1>
+			<p class="bp-copy">Workspace status, storage details, and search maintenance.</p>
+		</div>
 	</section>
 
-	<div class="grid gap-4 md:grid-cols-4">
-		<div class="rounded-[1.6rem] border border-white/10 bg-base-200/45 p-5">
-			<p class="text-xs uppercase tracking-[0.24em] text-base-content/45">Projects</p>
-			<p class="mt-2 text-3xl font-semibold text-white">{data.snapshot.projectCount}</p>
+	<div class="bp-stat-grid md:grid-cols-4">
+		<div class="bp-stat">
+			<p class="bp-meta">Projects</p>
+			<p class="bp-stat-value">{data.snapshot.projectCount}</p>
 		</div>
-		<div class="rounded-[1.6rem] border border-white/10 bg-base-200/45 p-5">
-			<p class="text-xs uppercase tracking-[0.24em] text-base-content/45">Open tasks</p>
-			<p class="mt-2 text-3xl font-semibold text-white">{data.snapshot.openTaskCount}</p>
+		<div class="bp-stat">
+			<p class="bp-meta">Open tasks</p>
+			<p class="bp-stat-value">{data.snapshot.openTaskCount}</p>
 		</div>
-		<div class="rounded-[1.6rem] border border-white/10 bg-base-200/45 p-5">
-			<p class="text-xs uppercase tracking-[0.24em] text-base-content/45">Notes</p>
-			<p class="mt-2 text-3xl font-semibold text-white">{data.snapshot.noteCount}</p>
+		<div class="bp-stat">
+			<p class="bp-meta">Notes</p>
+			<p class="bp-stat-value">{data.snapshot.noteCount}</p>
 		</div>
-		<div class="rounded-[1.6rem] border border-white/10 bg-base-200/45 p-5">
-			<p class="text-xs uppercase tracking-[0.24em] text-base-content/45">Meetings</p>
-			<p class="mt-2 text-3xl font-semibold text-white">{data.snapshot.meetingCount}</p>
+		<div class="bp-stat">
+			<p class="bp-meta">Meetings</p>
+			<p class="bp-stat-value">{data.snapshot.meetingCount}</p>
 		</div>
 	</div>
 
 	<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-		<div class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-			<div class="grid gap-5">
+		<section class="bp-panel p-5">
+			<div class="relative z-10 grid gap-5">
 				<div>
-					<p class="text-sm text-base-content/60">Workspace path</p>
-					<p class="mt-1 font-mono text-sm text-white">{data.workspaceDir}</p>
+					<p class="bp-meta">Workspace path</p>
+					<p class="mt-2 font-mono text-sm text-white">{data.workspaceDir}</p>
 				</div>
 				<div>
-					<p class="text-sm text-base-content/60">Database status</p>
-					<p class="mt-1 text-white">{data.databaseStatus}</p>
+					<p class="bp-meta">Database status</p>
+					<p class="mt-2 text-white">{data.databaseStatus}</p>
 				</div>
 				<div>
-					<p class="text-sm text-base-content/60">App info</p>
-					<p class="mt-1 text-white">{data.appInfo}</p>
+					<p class="bp-meta">App info</p>
+					<p class="mt-2 text-white">{data.appInfo}</p>
 				</div>
 			</div>
-		</div>
+		</section>
 
-		<div class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-			<h2 class="text-xl font-semibold text-white">Search maintenance</h2>
-			<p class="mt-2 text-sm text-base-content/60">
-				Use reindex when you suspect search, backlinks, or file-system changes need a fresh scan.
-			</p>
-			<div class="mt-5 grid gap-3">
-				<button class="btn btn-primary" onclick={reindex} disabled={reindexState === 'working'}>
-					{reindexState === 'working' ? 'Reindexing…' : 'Reindex workspace'}
-				</button>
-				{#if reindexMessage}
-					<p class={`text-sm ${reindexState === 'error' ? 'text-error' : 'text-success'}`}>{reindexMessage}</p>
-				{/if}
-				{#if lastReindexedAt}
-					<p class="text-xs text-base-content/45">Last reindexed {lastReindexedAt}</p>
-				{/if}
+		<section class="bp-panel p-5">
+			<div class="relative z-10">
+				<h2 class="text-xl font-semibold text-white">Search maintenance</h2>
+				<p class="mt-2 text-sm text-base-content/60">Reindex if search or backlinks need a fresh scan.</p>
+				<div class="mt-5 grid gap-3">
+					<button class="btn btn-primary" onclick={reindex} disabled={reindexState === 'working'}>
+						{reindexState === 'working' ? 'Reindexing…' : 'Reindex workspace'}
+					</button>
+					{#if reindexMessage}
+						<p class={`text-sm ${reindexState === 'error' ? 'text-error' : 'text-success'}`}>{reindexMessage}</p>
+					{/if}
+					{#if lastReindexedAt}
+						<p class="bp-meta">Last reindexed {lastReindexedAt}</p>
+					{/if}
+				</div>
 			</div>
-		</div>
+		</section>
 	</div>
 </div>

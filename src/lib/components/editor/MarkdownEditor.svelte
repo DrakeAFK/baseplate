@@ -129,40 +129,41 @@
 	});
 </script>
 
-<div class="grid gap-4 rounded-[1.75rem] border border-white/10 bg-base-200/60 p-4">
-	<div class="flex flex-wrap items-center justify-between gap-3">
+<div class="bp-panel grid gap-5 p-4 md:p-5">
+	<div class="relative z-10 flex flex-wrap items-center justify-between gap-3">
 		<div>
-			<p class="text-xs uppercase tracking-[0.3em] text-base-content/50">{label}</p>
-			<p class="text-sm text-base-content/60">Autosaves in place. Markdown stays on disk, preview stays close, and edits are not reloaded out from under you.</p>
+			<p class="bp-kicker">{label}</p>
+			<p class="mt-2 text-sm text-base-content/55">Autosaves while you work.</p>
 		</div>
-		<div class="flex items-center gap-2">
-			<div class="join">
-				<button class="btn btn-sm join-item" class:btn-active={mode === 'edit'} onclick={() => (mode = 'edit')}>Edit</button>
-				<button class="btn btn-sm join-item" class:btn-active={mode === 'split'} onclick={() => (mode = 'split')}>Split</button>
-				<button class="btn btn-sm join-item" class:btn-active={mode === 'preview'} onclick={() => (mode = 'preview')}>Preview</button>
+		<div class="flex flex-wrap items-center gap-2">
+			<div class="tabs tabs-boxed">
+				<button class="tab" class:tab-active={mode === 'edit'} onclick={() => (mode = 'edit')}>Edit</button>
+				<button class="tab" class:tab-active={mode === 'split'} onclick={() => (mode = 'split')}>Split</button>
+				<button class="tab" class:tab-active={mode === 'preview'} onclick={() => (mode = 'preview')}>Preview</button>
 			</div>
-			<span class="text-xs text-base-content/60">
-				{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : 'Idle'}
+			<span class="bp-pill">
+				{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : 'Ready'}
 			</span>
 		</div>
 	</div>
 
-	<div class={`grid gap-4 ${mode === 'split' ? 'lg:grid-cols-2' : ''}`}>
+	<div class={`relative z-10 grid gap-4 ${mode === 'split' ? 'xl:grid-cols-2' : ''}`}>
 		{#if mode !== 'preview'}
-			<div class="grid gap-2">
+			<div class="bp-panel-soft grid gap-3 p-3">
 				<textarea
 					bind:this={textarea}
-					class="textarea min-h-136 w-full resize-y border-white/10 bg-base-300/40 font-mono text-sm leading-7"
+					class="textarea min-h-[34rem] w-full resize-y border-none bg-transparent font-mono text-sm leading-7 shadow-none focus:shadow-none"
 					bind:value={draft}
 					oninput={scheduleSave}
 					onblur={() => void save()}
 				></textarea>
-				<p class="text-xs text-base-content/45">Markdown autosaves after you pause and again when you leave the field.</p>
+				<div class="bp-divider"></div>
+				<p class="text-xs uppercase tracking-[0.24em] text-base-content/42">Markdown</p>
 			</div>
 		{/if}
 
 		{#if mode !== 'edit'}
-			<div class="prose prose-invert max-w-none rounded-[1.35rem] border border-white/10 bg-base-300/30 p-5">
+			<div class="bp-panel-soft prose prose-invert min-h-[34rem] max-w-none p-5">
 				{@html renderedHtml}
 			</div>
 		{/if}

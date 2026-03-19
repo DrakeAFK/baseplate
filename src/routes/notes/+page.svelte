@@ -70,17 +70,20 @@
 	);
 </script>
 
-<div class="grid gap-6">
-	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
-		<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Notes</p>
-		<h1 class="mt-2 text-4xl font-semibold text-white">Everything written down, with its context intact.</h1>
-		<p class="mt-3 max-w-3xl text-base-content/65">
-			This is the more usable version of the old notes modal: one place to scan notes, docs, decisions, meeting notes, and workspace notes, then jump straight to where each one lives.
-		</p>
+<div class="bp-page">
+	<section class="bp-hero p-6 md:p-7">
+		<div class="bp-toolbar">
+			<div>
+				<p class="bp-kicker">Notes</p>
+				<h1 class="bp-page-title">Notes</h1>
+				<p class="bp-copy">Docs, decisions, meetings, daily notes, and inbox capture.</p>
+			</div>
+			<span class="bp-pill">{filteredNotes.length} results</span>
+		</div>
 	</section>
 
-	<section class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-		<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem_16rem]">
+	<section class="bp-panel p-5">
+		<div class="relative z-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem_16rem]">
 			<input class="input input-bordered w-full" bind:value={q} placeholder="Filter by title, excerpt, project, or kind" />
 			<select class="select select-bordered w-full" bind:value={kind}>
 				<option value="all">All note types</option>
@@ -103,19 +106,21 @@
 				<section class="grid gap-4">
 					<div class="flex items-center justify-between gap-3">
 						<h2 class="text-xl font-semibold text-white">{group.label}</h2>
-						<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">{group.items.length}</span>
+						<span class="bp-meta">{group.items.length}</span>
 					</div>
 					<div class="grid gap-3 lg:grid-cols-2">
 						{#each group.items as item}
-							<a class="rounded-[1.4rem] border border-white/10 bg-base-200/45 px-5 py-4 transition hover:border-info/30" href={item.href ?? '/notes'}>
+							<a class="bp-list-card px-5 py-4" href={item.href ?? '/notes'}>
 								<div class="flex flex-wrap items-center justify-between gap-3">
 									<div>
 										<p class="font-medium text-white">{noteTitle(item)}</p>
-										<p class="text-sm text-base-content/60">{noteContext(item)} · {itemKindLabel(item.note.kind)}</p>
+										<p class="mt-1 text-sm text-base-content/60">{noteContext(item)} · {itemKindLabel(item.note.kind)}</p>
 									</div>
-									<p class="text-xs text-base-content/45">{formatRelative(item.note.updated_at)}</p>
+									<p class="bp-meta">{formatRelative(item.note.updated_at)}</p>
 								</div>
-								<p class="mt-2 text-sm text-base-content/55">{item.note.excerpt || 'No summary yet.'}</p>
+								{#if item.note.excerpt}
+									<p class="mt-3 text-sm text-base-content/55">{item.note.excerpt}</p>
+								{/if}
 							</a>
 						{/each}
 					</div>
@@ -123,8 +128,6 @@
 			{/each}
 		</div>
 	{:else}
-		<div class="rounded-[1.8rem] border border-dashed border-white/10 bg-base-200/35 p-10 text-center text-base-content/55">
-			No notes match the current filters.
-		</div>
+		<div class="bp-empty p-10 text-center">No notes match the current filters.</div>
 	{/if}
 </div>

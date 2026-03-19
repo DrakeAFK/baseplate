@@ -12,19 +12,20 @@
 	});
 </script>
 
-<div class="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_22rem]">
-	<div class="grid gap-6">
-		<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
-			<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">Daily note</p>
-			<h1 class="mt-2 text-4xl font-semibold text-white">{formatDate(document.dailyMeta.note_date)}</h1>
-			<p class="mt-3 max-w-3xl text-base-content/65">
-				{document.isToday
-					? "This is today's note in its stable daily-note route, so it stays linkable and searchable like the rest of the workspace."
-					: 'Past daily notes stay editable, searchable, and directly addressable so you can revisit earlier thinking without getting bounced into today.'}
-			</p>
-			<p class="mt-3 text-sm text-base-content/55">Updated {formatRelative(document.daily.note.updated_at)}</p>
-		</section>
+<div class="bp-page">
+	<section class="bp-hero p-6 md:p-7">
+		<div class="bp-toolbar">
+			<div>
+				<p class="bp-kicker">Daily note</p>
+				<h1 class="bp-page-title">{formatDate(document.dailyMeta.note_date)}</h1>
+				<p class="bp-copy">{document.isToday ? 'Today’s note, available from its permanent route.' : 'A past daily note, still editable and fully linked.'}</p>
+				<p class="mt-4 text-sm text-base-content/55">Updated {formatRelative(document.daily.note.updated_at)}</p>
+			</div>
+			<span class="bp-pill">{document.daily.backlinks.length} backlinks</span>
+		</div>
+	</section>
 
+	<div class="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_21rem]">
 		<MarkdownEditor
 			value={document.daily.body}
 			saveUrl={`/api/notes/${document.daily.note.id}/content`}
@@ -36,44 +37,44 @@
 				}
 			}}
 		/>
-	</div>
 
-	<div class="grid gap-6">
-		<section class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-			<h2 class="text-xl font-semibold text-white">Navigation</h2>
-			<div class="mt-4 grid gap-3">
-				<a class="rounded-[1.2rem] border border-white/10 bg-base-300/25 px-4 py-4 transition hover:border-info/30" href="/notes">
-					<p class="font-medium text-white">Back to notes</p>
-					<p class="mt-1 text-sm text-base-content/55">Return to the full note index and jump into another note or project artifact.</p>
-				</a>
-				<a class="rounded-[1.2rem] border border-white/10 bg-base-300/25 px-4 py-4 transition hover:border-info/30" href="/today">
-					<p class="font-medium text-white">{document.isToday ? 'Open Today view' : 'Go to today'}</p>
-					<p class="mt-1 text-sm text-base-content/55">
-						{document.isToday
-							? 'Switch back to the lighter Today page when you want the daily note plus workspace shortcuts.'
-							: "Open the current day's note when you want to get back into today's work."}
-					</p>
-				</a>
-			</div>
-		</section>
-
-		<section class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-			<h2 class="text-xl font-semibold text-white">Backlinks</h2>
-			<div class="mt-4 grid gap-3">
-				{#if document.daily.backlinks.length}
-					{#each document.daily.backlinks as backlink}
-						<a class="rounded-[1.2rem] border border-white/10 bg-base-300/25 px-4 py-3 transition hover:border-info/30" href={backlink.href ?? '/notes'}>
-							<p class="font-medium text-white">{backlink.title}</p>
-							<p class="text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
-							<p class="text-sm text-base-content/45">{backlink.snippet || 'No summary yet.'}</p>
+		<div class="grid gap-6">
+			<section class="bp-panel p-5">
+				<div class="relative z-10">
+					<p class="bp-kicker">Navigation</p>
+					<div class="mt-4 bp-list">
+						<a class="bp-list-card" href="/notes">
+							<p class="font-medium text-white">Back to notes</p>
+							<p class="mt-1 text-sm text-base-content/55">Return to the full note index.</p>
 						</a>
-					{/each}
-				{:else}
-					<p class="rounded-[1.2rem] border border-dashed border-white/10 bg-base-300/15 px-4 py-5 text-sm text-base-content/45">
-						References back into this daily note will appear here once other notes or tasks mention it.
-					</p>
-				{/if}
-			</div>
-		</section>
+						<a class="bp-list-card" href="/today">
+							<p class="font-medium text-white">{document.isToday ? 'Open Today view' : 'Go to today'}</p>
+							<p class="mt-1 text-sm text-base-content/55">{document.isToday ? 'Open the lighter daily workspace.' : 'Jump back to the current day.'}</p>
+						</a>
+					</div>
+				</div>
+			</section>
+
+			<section class="bp-panel p-5">
+				<div class="relative z-10">
+					<h2 class="text-xl font-semibold text-white">Backlinks</h2>
+					<div class="mt-4 bp-list">
+						{#if document.daily.backlinks.length}
+							{#each document.daily.backlinks as backlink}
+								<a class="bp-list-card" href={backlink.href ?? '/notes'}>
+									<p class="font-medium text-white">{backlink.title}</p>
+									<p class="mt-1 text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
+									{#if backlink.snippet}
+										<p class="mt-2 text-sm text-base-content/45">{backlink.snippet}</p>
+									{/if}
+								</a>
+							{/each}
+						{:else}
+							<p class="bp-empty">References to this daily note show up here.</p>
+						{/if}
+					</div>
+				</div>
+			</section>
+		</div>
 	</div>
 </div>

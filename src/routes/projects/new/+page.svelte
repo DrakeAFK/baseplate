@@ -25,37 +25,42 @@
 	}
 </script>
 
-<div class="mx-auto flex max-w-3xl flex-col gap-6">
-	<div>
-		<p class="text-sm uppercase tracking-[0.3em] text-base-content/50">Create project</p>
-		<h1 class="text-4xl font-semibold text-base-content">Start a durable workspace</h1>
-	</div>
+<div class="bp-page mx-auto max-w-4xl">
+	<section class="bp-hero p-6 md:p-7">
+		<div>
+			<p class="bp-kicker">Create project</p>
+			<h1 class="bp-page-title">Create project</h1>
+			<p class="bp-copy">Start a new workspace with a clear title and scope.</p>
+		</div>
+	</section>
 
-	<div class="rounded-4xl border border-white/10 bg-base-200/70 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-		<div class="grid gap-5">
+	<section class="bp-panel p-6 md:p-8">
+		<div class="relative z-10 grid gap-5">
 			<label class="grid gap-2">
-				<span class="text-sm text-base-content/70">Title</span>
+				<span class="bp-meta">Title</span>
 				<input class="input input-bordered w-full" bind:value={title} placeholder="RequestBridge" />
 			</label>
-			<label class="grid gap-2">
-				<span class="text-sm text-base-content/70">Kind</span>
-				<select class="select select-bordered" bind:value={kind}>
-					<option value="standard">Standard</option>
-					<option value="perpetual">Perpetual</option>
-				</select>
-			</label>
-			<label class="grid gap-2">
-				<span class="text-sm text-base-content/70">Summary</span>
-				<textarea class="textarea textarea-bordered min-h-28" bind:value={summary}></textarea>
-			</label>
+			<div class="grid gap-5 md:grid-cols-[14rem_minmax(0,1fr)]">
+				<label class="grid gap-2">
+					<span class="bp-meta">Kind</span>
+					<select class="select select-bordered" bind:value={kind}>
+						<option value="standard">Standard</option>
+						<option value="perpetual">Perpetual</option>
+					</select>
+				</label>
+				<label class="grid gap-2">
+					<span class="bp-meta">Summary</span>
+					<textarea class="textarea textarea-bordered min-h-32" bind:value={summary} placeholder="Scope, owner, and current direction"></textarea>
+				</label>
+			</div>
 			{#if error}
 				<p class="text-sm text-error">{error}</p>
 			{/if}
-			<div class="flex justify-end">
+			<div class="flex justify-end pt-2">
 				<button class="btn btn-primary" onclick={submit} disabled={saving || !title.trim()}>
 					{saving ? 'Creating…' : 'Create project'}
 				</button>
 			</div>
 		</div>
-	</div>
+	</section>
 </div>

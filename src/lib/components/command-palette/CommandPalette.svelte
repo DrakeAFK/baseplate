@@ -59,33 +59,45 @@
 </script>
 
 {#if open}
-	<div class="fixed inset-0 z-50 bg-neutral/55 p-4 backdrop-blur-sm" role="button" tabindex="0" onclick={onClose} onkeydown={(event) => event.key === 'Escape' && onClose()}>
-		<div class="mx-auto mt-16 max-w-2xl rounded-[1.8rem] border border-white/10 bg-base-100/95 shadow-[0_30px_120px_rgba(0,0,0,0.45)]" role="presentation" onclick={(event) => event.stopPropagation()}>
-			<div class="border-b border-white/10 px-5 py-4">
-				<input
-					bind:this={inputEl}
-					class="input input-ghost w-full text-base"
-					bind:value={query}
-					onkeydown={handleKeydown}
-					placeholder="Search commands, recent items, and navigation"
-				/>
+	<div
+		class="fixed inset-0 z-50 bg-[rgba(2,7,14,0.76)] p-4 backdrop-blur-md"
+		role="button"
+		tabindex="0"
+		onclick={onClose}
+		onkeydown={(event) => event.key === 'Escape' && onClose()}
+	>
+		<div class="bp-panel mx-auto mt-12 max-w-2xl p-4" role="presentation" onclick={(event) => event.stopPropagation()}>
+			<div class="relative z-10 grid gap-4">
+				<div class="px-2 pt-1">
+					<p class="bp-kicker">Command palette</p>
+					<p class="mt-2 text-sm text-base-content/55">Navigate, open recent work, or trigger a quick create action.</p>
+				</div>
+				<div class="rounded-[1.35rem] border border-white/10 bg-black/10 px-4 py-3">
+					<input
+						bind:this={inputEl}
+						class="input input-ghost h-12 w-full border-none bg-transparent px-0 text-base shadow-none focus:shadow-none"
+						bind:value={query}
+						onkeydown={handleKeydown}
+						placeholder="Search navigation, actions, and recent items"
+					/>
+				</div>
 			</div>
-			<div class="max-h-112 overflow-y-auto p-3">
+			<div class="relative z-10 mt-4 max-h-[28rem] overflow-y-auto p-1">
 				{#each filtered as item, index (item.id)}
 					<button
 						class={cn(
-							'flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition hover:bg-base-200',
-							index === activeIndex && 'bg-base-200'
+							'flex w-full items-center justify-between rounded-[1.2rem] px-4 py-3 text-left transition hover:bg-white/10',
+							index === activeIndex && 'bg-white/10'
 						)}
 						onmouseenter={() => (activeIndex = index)}
 						onclick={() => activate(item)}
 					>
-						<span class="font-medium">{item.label}</span>
-						<span class="text-xs uppercase tracking-[0.25em] text-base-content/45">{item.group}</span>
+						<span class="font-medium text-white">{item.label}</span>
+						<span class="bp-meta">{item.group}</span>
 					</button>
 				{/each}
 				{#if !filtered.length}
-					<p class="px-4 py-8 text-sm text-base-content/55">No commands matched.</p>
+					<p class="bp-empty px-4 py-8 text-sm">No results matched.</p>
 				{/if}
 			</div>
 		</div>

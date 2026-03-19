@@ -44,27 +44,25 @@
 	}
 </script>
 
-<div class="grid gap-6">
-	<section class="rounded-4xl border border-white/10 bg-base-200/50 p-6">
-		<div class="flex flex-wrap items-start justify-between gap-4">
+<div class="bp-page">
+	<section class="bp-hero p-6 md:p-7">
+		<div class="bp-toolbar">
 			<div class="max-w-3xl">
-				<p class="text-xs uppercase tracking-[0.3em] text-base-content/45">{kindLabel}</p>
-				<input class="input input-bordered mt-3 w-full text-3xl font-semibold text-white" bind:value={title} />
-				<p class="mt-3 text-base-content/65">
-					{document.project?.title} · Updated {formatRelative(document.note.updated_at)}
-				</p>
+				<p class="bp-kicker">{kindLabel}</p>
+				<input class="input input-bordered mt-4 h-[3.25rem] w-full text-3xl font-semibold text-white" bind:value={title} />
+				<p class="mt-4 text-base-content/65">{document.project?.title} · Updated {formatRelative(document.note.updated_at)}</p>
 			</div>
 			<div class="flex gap-2">
 				<button class="btn btn-primary btn-sm" onclick={saveMeta} disabled={saving || !title.trim()}>
 					{saving ? 'Saving…' : 'Save title'}
 				</button>
 				{#if document.project}
-					<a class="btn btn-sm" href={`/projects/${document.project.slug}`}>{backLabel}</a>
+					<a class="btn btn-ghost btn-sm" href={`/projects/${document.project.slug}`}>{backLabel}</a>
 				{/if}
 			</div>
 		</div>
 		{#if error}
-			<p class="mt-3 text-sm text-error">{error}</p>
+			<p class="mt-4 text-sm text-error">{error}</p>
 		{/if}
 	</section>
 
@@ -81,22 +79,24 @@
 		}}
 	/>
 
-	<div class="rounded-[1.8rem] border border-white/10 bg-base-200/45 p-5">
-		<h2 class="text-xl font-semibold text-white">Backlinks</h2>
-		<div class="mt-4 grid gap-3">
-			{#if document.backlinks.length}
-				{#each document.backlinks as backlink}
-					<a class="rounded-[1.2rem] border border-white/10 bg-base-300/25 px-4 py-3 transition hover:border-info/30" href={backlink.href ?? `/projects/${document.project?.slug ?? ''}`}>
-						<p class="font-medium text-white">{backlink.title}</p>
-						<p class="text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
-						<p class="text-sm text-base-content/45">{backlink.snippet || 'No summary yet.'}</p>
-					</a>
-				{/each}
-			{:else}
-				<p class="rounded-[1.2rem] border border-dashed border-white/10 bg-base-300/15 px-4 py-5 text-sm text-base-content/45">
-					Links back into this note will show up here once other notes or tasks reference it.
-				</p>
-			{/if}
+	<section class="bp-panel p-5">
+		<div class="relative z-10">
+			<h2 class="text-xl font-semibold text-white">Backlinks</h2>
+			<div class="mt-4 bp-list">
+				{#if document.backlinks.length}
+					{#each document.backlinks as backlink}
+						<a class="bp-list-card" href={backlink.href ?? `/projects/${document.project?.slug ?? ''}`}>
+							<p class="font-medium text-white">{backlink.title}</p>
+							<p class="mt-1 text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
+							{#if backlink.snippet}
+								<p class="mt-2 text-sm text-base-content/45">{backlink.snippet}</p>
+							{/if}
+						</a>
+					{/each}
+				{:else}
+					<p class="bp-empty">References to this note show up here.</p>
+				{/if}
+			</div>
 		</div>
-	</div>
+	</section>
 </div>
