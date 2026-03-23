@@ -19,6 +19,12 @@ export interface Project {
 	archived_at: string | null;
 }
 
+export interface ProjectWithCounts extends Project {
+	openTaskCount: number;
+	noteCount: number;
+	meetingCount: number;
+}
+
 export interface Note {
 	id: string;
 	project_id: string | null;
@@ -149,10 +155,17 @@ export interface TodayShortcut {
 	href: string;
 }
 
+export interface TodayTask extends Task {
+	projectTitle: string;
+	projectSlug: string;
+}
+
 export interface TodayDashboard {
 	daily: NoteDocument;
 	dailyMeta: DailyNoteMeta;
 	shortcuts: TodayShortcut[];
+	todayTasks: TodayTask[];
+	yesterdayNote: { date: string; noteId: string } | null;
 }
 
 export interface NotesIndexItem {
@@ -186,7 +199,7 @@ export interface WorkspacePulseCollection {
 
 export interface AppShellData {
 	workspaceDir: string;
-	activeProjects: Project[];
+	activeProjects: ProjectWithCounts[];
 	allProjects: Project[];
 	snapshot: {
 		projectCount: number;

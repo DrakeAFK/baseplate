@@ -27,18 +27,70 @@
 	let meetingSaving = $state(false);
 	let meetingError = $state('');
 
-	const taskStatuses: TaskStatus[] = ['in_progress', 'blocked', 'todo', 'done', 'cancelled'];
-	const noteKinds: Array<'note' | 'doc' | 'decision'> = ['note', 'doc', 'decision'];
+	const openTaskStatuses: TaskStatus[] = ['in_progress', 'blocked', 'todo'];
+	const closedTaskStatuses: TaskStatus[] = ['done', 'cancelled'];
+	const noteSections: Array<{
+		kind: 'note' | 'doc' | 'decision';
+		label: string;
+		description: string;
+		empty: string;
+	}> = [
+		{
+			kind: 'note',
+			label: 'Working notes',
+			description: 'Loose context, rough thinking, and in-flight notes.',
+			empty: 'No working notes yet.'
+		},
+		{
+			kind: 'doc',
+			label: 'Docs',
+			description: 'Reference material, specs, and durable documentation.',
+			empty: 'No docs yet.'
+		},
+		{
+			kind: 'decision',
+			label: 'Decisions',
+			description: 'Call the shots and keep the why close to the work.',
+			empty: 'No decisions yet.'
+		}
+	];
+	const taskLaneMeta: Record<TaskStatus, { title: string; description: string }> = {
+		in_progress: {
+			title: 'In progress',
+			description: 'Actively moving work. Keep this tight and current.'
+		},
+		blocked: {
+			title: 'Blocked',
+			description: 'Waiting on a decision, dependency, or handoff.'
+		},
+		todo: {
+			title: 'Ready next',
+			description: 'Defined work that is ready to pull when capacity opens.'
+		},
+		done: {
+			title: 'Done',
+			description: 'Completed work, kept visible without crowding the queue.'
+		},
+		cancelled: {
+			title: 'Cancelled',
+			description: 'Explicitly dropped work so the project history stays honest.'
+		}
+	};
 	const highlightedTaskId = $derived(page.url.hash.startsWith('#task-') ? page.url.hash.slice(6) : null);
 
 	function countTasks(items: TaskTreeItem[]): number {
 		return items.reduce((sum, item) => sum + 1 + countTasks(item.children), 0);
 	}
 
-	const totalTasks = $derived(taskStatuses.reduce((sum, status) => sum + countTasks(dashboard.taskGroups[status]), 0));
-	const openTasks = $derived(
-		countTasks(dashboard.taskGroups.in_progress) + countTasks(dashboard.taskGroups.blocked) + countTasks(dashboard.taskGroups.todo)
-	);
+	function laneCount(status: TaskStatus): number {
+		return countTasks(dashboard.taskGroups[status]);
+	}
+
+	const totalTasks = $derived([...openTaskStatuses, ...closedTaskStatuses].reduce((sum, status) => sum + laneCount(status), 0));
+	const openTasks = $derived(openTaskStatuses.reduce((sum, status) => sum + laneCount(status), 0));
+	const blockedTasks = $derived(laneCount('blocked'));
+	const completedTasks = $derived(laneCount('done'));
+	const projectNoteCount = $derived(noteSections.reduce((sum, section) => sum + dashboard.notesByKind[section.kind].length, 0));
 
 	$effect(() => {
 		dashboard = data;
@@ -113,25 +165,56 @@
 
 <div class="bp-page">
 	<section class="bp-hero p-6 md:p-7">
-		<div class="bp-toolbar">
-			<div>
-				<p class="bp-kicker">Project workspace</p>
-				<h1 class="bp-page-title">{dashboard.project.title}</h1>
-				{#if dashboard.project.summary}
-					<p class="bp-copy">{dashboard.project.summary}</p>
-				{/if}
+		<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+			<div class="grid gap-4">
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="bp-pill">{projectKind}</span>
+					<span class="bp-pill">{projectStatus.replace('_', ' ')}</span>
+					<span class="bp-meta">Updated {formatRelative(dashboard.project.updated_at)}</span>
+				</div>
+				<div>
+					<p class="bp-kicker">Project workspace</p>
+					<h1 class="bp-page-title">{projectTitle}</h1>
+					<p class="bp-copy">
+						{projectSummary || 'Define the brief, keep execution tight, and let notes and meetings support the work instead of burying it.'}
+					</p>
+				</div>
 			</div>
-			<div class="bp-inline-stats">
-				<span class="bp-pill">{openTasks} open work</span>
-				<span class="bp-pill">{dashboard.notesByKind.note.length + dashboard.notesByKind.doc.length + dashboard.notesByKind.decision.length} notes</span>
-				<span class="bp-pill">{dashboard.meetings.length} meetings</span>
+
+			<div class="bp-stat-grid sm:grid-cols-2">
+				<div class="bp-stat">
+					<p class="bp-meta">Open work</p>
+					<p class="bp-stat-value">{openTasks}</p>
+				</div>
+				<div class="bp-stat">
+					<p class="bp-meta">Blocked</p>
+					<p class="bp-stat-value">{blockedTasks}</p>
+				</div>
+				<div class="bp-stat">
+					<p class="bp-meta">Notes</p>
+					<p class="bp-stat-value">{projectNoteCount}</p>
+				</div>
+				<div class="bp-stat">
+					<p class="bp-meta">Meetings</p>
+					<p class="bp-stat-value">{dashboard.meetings.length}</p>
+				</div>
 			</div>
 		</div>
 
 		<div class="mt-5 bp-panel-soft p-5">
-			<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_13rem_13rem_auto]">
+			<div class="bp-toolbar">
+				<div>
+					<p class="bp-kicker">Project settings</p>
+					<p class="mt-2 text-sm text-base-content/55">Keep the title, brief, and state honest so the queue stays grounded.</p>
+				</div>
+				<button class="btn btn-primary" onclick={saveProject} disabled={projectSaving}>
+					{projectSaving ? 'Saving…' : 'Save project'}
+				</button>
+			</div>
+
+			<div class="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_12rem_12rem_16rem]">
 				<label class="grid gap-2">
-					<span class="bp-meta">Title and summary</span>
+					<span class="bp-meta">Title and brief</span>
 					<div class="grid gap-3">
 						<input class="input input-bordered w-full" bind:value={projectTitle} />
 						<textarea class="textarea textarea-bordered min-h-24 w-full" bind:value={projectSummary} placeholder="Scope, owner, and current direction"></textarea>
@@ -153,14 +236,11 @@
 						<option value="archived">Archived</option>
 					</select>
 				</label>
-				<div class="flex flex-col justify-between gap-3">
-					<div class="text-sm text-base-content/55">
-						<p>Updated {formatRelative(dashboard.project.updated_at)}</p>
-						<p>{totalTasks} tasks tracked</p>
-					</div>
-					<button class="btn btn-primary" onclick={saveProject} disabled={projectSaving}>
-						{projectSaving ? 'Saving…' : 'Save project'}
-					</button>
+				<div class="bp-list-card h-full">
+					<p class="bp-meta">Tracking</p>
+					<p class="mt-2 text-sm text-base-content/58">{totalTasks} tasks across the full queue</p>
+					<p class="mt-2 text-sm text-base-content/58">{dashboard.backlinks.length} backlinks into this project</p>
+					<p class="mt-2 text-sm text-base-content/58">{completedTasks} completed tasks preserved in history</p>
 				</div>
 			</div>
 		</div>
@@ -170,46 +250,78 @@
 		{/if}
 	</section>
 
-	<div class="grid gap-6 xl:grid-cols-[minmax(0,1.14fr)_minmax(340px,0.86fr)]">
-		<section class="bp-panel p-5">
-			<div class="relative z-10">
-				<div class="flex items-center justify-between gap-3">
-					<div>
-						<h2 class="text-xl font-semibold text-white">Work queue</h2>
-						<p class="mt-1 text-sm text-base-content/58">Tasks, dates, priorities, notes, and subtasks all stay editable here.</p>
-					</div>
-					<span class="bp-pill">{openTasks} open</span>
-				</div>
-
-				<div class="mt-5">
-					<TaskComposer projectId={dashboard.project.id} submitLabel="Add task" />
-				</div>
-
-				<div class="mt-6 grid gap-6">
-					{#each taskStatuses as status}
-						<div class="grid gap-3">
-							<div class="flex items-center justify-between">
-								<h3 class="bp-meta">{status.replaceAll('_', ' ')}</h3>
-								<span class="bp-meta">{dashboard.taskGroups[status].length}</span>
-							</div>
-							{#if dashboard.taskGroups[status].length}
-								<TaskTree items={dashboard.taskGroups[status]} project={dashboard.project} {highlightedTaskId} />
-							{:else}
-								<p class="bp-empty">No tasks in this lane.</p>
-							{/if}
+	<div class="grid gap-6 xl:grid-cols-[minmax(0,1.28fr)_minmax(340px,0.72fr)]">
+		<div class="grid gap-6">
+			<section id="tasks" class="bp-panel p-5">
+				<div class="relative z-10">
+					<div class="bp-toolbar">
+						<div>
+							<h2 class="text-xl font-semibold text-white">Execution board</h2>
+							<p class="mt-1 text-sm text-base-content/58">
+								Open work stays front and center. Completed history is still here, just no longer competing with the live queue.
+							</p>
 						</div>
-					{/each}
+						<div class="bp-inline-stats">
+							<span class="bp-pill">{laneCount('in_progress')} in progress</span>
+							<span class="bp-pill">{laneCount('blocked')} blocked</span>
+							<span class="bp-pill">{laneCount('todo')} ready next</span>
+						</div>
+					</div>
+
+					<div class="mt-5">
+						<TaskComposer projectId={dashboard.project.id} submitLabel="Add task" />
+					</div>
+
+					<div class="mt-6 bp-section-stack">
+						{#each openTaskStatuses as status}
+							<section class="bp-task-lane">
+								<div class="bp-task-lane-header">
+									<div>
+										<p class="text-base font-semibold text-white">{taskLaneMeta[status].title}</p>
+										<p class="mt-1 text-sm text-base-content/55">{taskLaneMeta[status].description}</p>
+									</div>
+									<span class="bp-pill">{laneCount(status)} tasks</span>
+								</div>
+
+								{#if dashboard.taskGroups[status].length}
+									<TaskTree items={dashboard.taskGroups[status]} project={dashboard.project} {highlightedTaskId} />
+								{:else}
+									<p class="bp-empty">{taskLaneMeta[status].title} is clear right now.</p>
+								{/if}
+							</section>
+						{/each}
+					</div>
+
+					<div class="mt-6 grid gap-4 lg:grid-cols-2">
+						{#each closedTaskStatuses as status}
+							<section class="bp-task-lane">
+								<div class="bp-task-lane-header">
+									<div>
+										<p class="text-base font-semibold text-white">{taskLaneMeta[status].title}</p>
+										<p class="mt-1 text-sm text-base-content/55">{taskLaneMeta[status].description}</p>
+									</div>
+									<span class="bp-pill">{laneCount(status)} tasks</span>
+								</div>
+
+								{#if dashboard.taskGroups[status].length}
+									<TaskTree items={dashboard.taskGroups[status]} project={dashboard.project} {highlightedTaskId} />
+								{:else}
+									<p class="bp-empty">No {taskLaneMeta[status].title.toLowerCase()} tasks right now.</p>
+								{/if}
+							</section>
+						{/each}
+					</div>
 				</div>
-			</div>
-		</section>
+			</section>
+		</div>
 
 		<div class="grid gap-6">
-			<section class="bp-panel p-5">
+			<section id="notes" class="bp-panel p-5">
 				<div class="relative z-10">
 					<div class="flex items-center justify-between gap-3">
 						<div>
 							<h2 class="text-xl font-semibold text-white">Brief and notes</h2>
-							<p class="mt-1 text-sm text-base-content/58">The overview, notes, docs, and decisions for this project.</p>
+							<p class="mt-1 text-sm text-base-content/58">Project brief, working notes, docs, and decisions in one readable stack.</p>
 						</div>
 					</div>
 
@@ -225,14 +337,14 @@
 
 					<div class="bp-panel-soft mt-4 grid gap-3 p-4">
 						<p class="bp-kicker">Create a note</p>
-						<input class="input input-bordered w-full" bind:value={noteTitle} placeholder="What do you want to capture?" />
-						<div class="grid gap-3 md:grid-cols-[12rem_auto]">
+						<div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_11rem_auto]">
+							<input class="input input-bordered w-full" bind:value={noteTitle} placeholder="What do you want to capture?" />
 							<select class="select select-bordered w-full" bind:value={noteKind}>
 								<option value="note">Note</option>
 								<option value="doc">Doc</option>
 								<option value="decision">Decision</option>
 							</select>
-							<button class="btn btn-primary" onclick={createNote} disabled={!noteTitle.trim() || noteSaving}>
+							<button class="btn btn-primary w-full md:w-auto" onclick={createNote} disabled={!noteTitle.trim() || noteSaving}>
 								{noteSaving ? 'Creating…' : `Create ${noteKind}`}
 							</button>
 						</div>
@@ -241,15 +353,18 @@
 						{/if}
 					</div>
 
-					<div class="mt-4 grid gap-4">
-						{#each noteKinds as kind}
+					<div class="mt-4 bp-section-stack">
+						{#each noteSections as section}
 							<div class="grid gap-2">
 								<div class="flex items-center justify-between">
-									<p class="bp-meta">{kind}s</p>
-									<span class="bp-meta">{dashboard.notesByKind[kind].length}</span>
+									<div>
+										<p class="bp-meta">{section.label}</p>
+										<p class="mt-1 text-sm text-base-content/48">{section.description}</p>
+									</div>
+									<span class="bp-meta">{dashboard.notesByKind[section.kind].length}</span>
 								</div>
-								{#if dashboard.notesByKind[kind].length}
-									{#each dashboard.notesByKind[kind] as note}
+								{#if dashboard.notesByKind[section.kind].length}
+									{#each dashboard.notesByKind[section.kind] as note}
 										<a class="bp-list-card" href={`/projects/${dashboard.project.slug}/notes/${note.id}`}>
 											<p class="font-medium text-white">{note.title}</p>
 											{#if note.excerpt}
@@ -258,7 +373,7 @@
 										</a>
 									{/each}
 								{:else}
-									<p class="bp-empty">No {kind}s yet.</p>
+									<p class="bp-empty">{section.empty}</p>
 								{/if}
 							</div>
 						{/each}
@@ -266,9 +381,10 @@
 				</div>
 			</section>
 
-			<section class="bp-panel p-5">
+			<section id="meetings" class="bp-panel p-5">
 				<div class="relative z-10">
 					<h2 class="text-xl font-semibold text-white">Meetings</h2>
+					<p class="mt-2 text-sm text-base-content/58">Keep decision-making and action capture anchored to the project timeline.</p>
 
 					<div class="bp-panel-soft mt-4 grid gap-3 p-4">
 						<p class="bp-kicker">Create a meeting</p>
@@ -305,28 +421,50 @@
 
 			<section class="bp-panel p-5">
 				<div class="relative z-10">
-					<h2 class="text-xl font-semibold text-white">Linked context</h2>
-					<div class="mt-4 bp-list">
-						{#if dashboard.backlinks.length}
-							{#each dashboard.backlinks as backlink}
-								<a class="bp-list-card" href={backlink.href ?? `/projects/${dashboard.project.slug}`}>
-									<p class="font-medium text-white">{backlink.title}</p>
-									<p class="mt-1 text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
-									{#if backlink.snippet}
-										<p class="mt-2 text-sm text-base-content/45">{backlink.snippet}</p>
-									{/if}
-								</a>
-							{/each}
-						{/if}
-						{#each dashboard.activity as item}
-							<a class="bp-list-card" href={item.href ?? `/projects/${dashboard.project.slug}`}>
-								<p class="font-medium text-white">{item.title}</p>
-								<p class="mt-1 text-sm text-base-content/55">{item.type} · {formatRelative(item.updatedAt)}</p>
-							</a>
-						{/each}
-						{#if !dashboard.backlinks.length && !dashboard.activity.length}
-							<p class="bp-empty">Linked notes, tasks, and activity show up here.</p>
-						{/if}
+					<h2 class="text-xl font-semibold text-white">Context and activity</h2>
+					<div class="mt-4 bp-section-stack">
+						<div class="grid gap-3">
+							<div class="flex items-center justify-between gap-3">
+								<p class="bp-meta">Backlinks</p>
+								<span class="bp-meta">{dashboard.backlinks.length}</span>
+							</div>
+							{#if dashboard.backlinks.length}
+								<div class="bp-list">
+									{#each dashboard.backlinks as backlink}
+										<a class="bp-list-card" href={backlink.href ?? `/projects/${dashboard.project.slug}`}>
+											<p class="font-medium text-white">{backlink.title}</p>
+											<p class="mt-1 text-sm text-base-content/55">{backlink.projectTitle ?? backlink.fromType}</p>
+											{#if backlink.snippet}
+												<p class="mt-2 text-sm text-base-content/45">{backlink.snippet}</p>
+											{/if}
+										</a>
+									{/each}
+								</div>
+							{:else}
+								<p class="bp-empty">Linked notes and tasks show up here.</p>
+							{/if}
+						</div>
+
+						<div class="bp-keyline"></div>
+
+						<div class="grid gap-3">
+							<div class="flex items-center justify-between gap-3">
+								<p class="bp-meta">Recent activity</p>
+								<span class="bp-meta">{dashboard.activity.length}</span>
+							</div>
+							{#if dashboard.activity.length}
+								<div class="bp-list">
+									{#each dashboard.activity as item}
+										<a class="bp-list-card" href={item.href ?? `/projects/${dashboard.project.slug}`}>
+											<p class="font-medium text-white">{item.title}</p>
+											<p class="mt-1 text-sm text-base-content/55">{item.type} · {formatRelative(item.updatedAt)}</p>
+										</a>
+									{/each}
+								</div>
+							{:else}
+								<p class="bp-empty">Recent tasks, meetings, and note updates appear here.</p>
+							{/if}
+						</div>
 					</div>
 				</div>
 			</section>

@@ -15,7 +15,7 @@
 	} = $props();
 </script>
 
-<div class="grid gap-4">
+<div class="grid gap-3">
 	{#each items as item (item.id)}
 		<TaskNode {item} {project} {depth} {highlightedTaskId} />
 	{/each}

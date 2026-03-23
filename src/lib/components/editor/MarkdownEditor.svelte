@@ -149,7 +149,7 @@
 
 	<div class={`relative z-10 grid gap-4 ${mode === 'split' ? 'xl:grid-cols-2' : ''}`}>
 		{#if mode !== 'preview'}
-			<div class="bp-panel-soft grid gap-3 p-3">
+			<div class="bp-panel-soft grid min-w-0 gap-3 p-3">
 				<textarea
 					bind:this={textarea}
 					class="textarea min-h-[34rem] w-full resize-y border-none bg-transparent font-mono text-sm leading-7 shadow-none focus:shadow-none"
@@ -163,7 +163,7 @@
 		{/if}
 
 		{#if mode !== 'edit'}
-			<div class="bp-panel-soft prose prose-invert min-h-[34rem] max-w-none p-5">
+			<div class="bp-panel-soft prose prose-invert min-h-[34rem] min-w-0 max-w-none p-5">
 				{@html renderedHtml}
 			</div>
 		{/if}

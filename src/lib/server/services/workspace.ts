@@ -19,6 +19,7 @@ import type {
 	ProjectDashboard,
 	ProjectKind,
 	ProjectStatus,
+	ProjectWithCounts,
 	SearchObjectType,
 	SearchResult,
 	Task,
@@ -26,6 +27,7 @@ import type {
 	TaskStatus,
 	TaskTreeItem,
 	TodayShortcut,
+	TodayTask,
 	TodayDashboard
 } from '$lib/types/models';
 import { formatDate, formatRelative, nowIso, todayDate } from '$lib/utils/dates';
@@ -278,15 +280,19 @@ function startWatcher(): void {
 	});
 }
 
-export function listActiveProjects(limit = 8): Project[] {
+export function listActiveProjects(limit = 8): ProjectWithCounts[] {
 	return getDb()
 		.prepare(
-			`SELECT * FROM projects
+			`SELECT projects.*,
+			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status NOT IN ('done', 'cancelled')) AS openTaskCount,
+			        (SELECT COUNT(*) FROM notes WHERE project_id = projects.id AND archived_at IS NULL AND kind IN ('note', 'doc', 'decision')) AS noteCount,
+			        (SELECT COUNT(*) FROM meetings WHERE project_id = projects.id AND archived_at IS NULL) AS meetingCount
+			 FROM projects
 			 WHERE archived_at IS NULL AND status != 'archived'
 			 ORDER BY ${projectStatusSortCase()}, sort_position ASC, updated_at DESC
 			 LIMIT ?`
 		)
-		.all(limit) as Project[];
+		.all(limit) as ProjectWithCounts[];
 }
 
 export function listProjects(filters?: { status?: ProjectStatus; q?: string }): Project[] {
@@ -1029,6 +1035,50 @@ function buildTodayShortcuts(snapshot: AppShellData['snapshot']): TodayShortcut[
 	];
 }
 
+export function getTodayTasks(): TodayTask[] {
+	const today = todayDate();
+	const db = getDb();
+	const rows = db
+		.prepare(
+			`SELECT tasks.*, projects.title AS project_title, projects.slug AS project_slug
+			 FROM tasks
+			 JOIN projects ON projects.id = tasks.project_id
+			 WHERE tasks.archived_at IS NULL
+			   AND tasks.status NOT IN ('done', 'cancelled')
+			   AND (tasks.scheduled_for = ? OR tasks.due_at = ?)
+			 ORDER BY
+			 	CASE tasks.status
+			 		WHEN 'in_progress' THEN 0
+			 		WHEN 'blocked' THEN 1
+			 		WHEN 'todo' THEN 2
+			 		ELSE 3
+			 	END,
+			 	CASE tasks.priority
+			 		WHEN 'urgent' THEN 0
+			 		WHEN 'high' THEN 1
+			 		WHEN 'medium' THEN 2
+			 		WHEN 'low' THEN 3
+			 		ELSE 4
+			 	END`
+		)
+		.all(today, today) as Array<Task & { project_title: string; project_slug: string }>;
+	return rows.map((row) => ({
+		...row,
+		projectTitle: row.project_title,
+		projectSlug: row.project_slug
+	}));
+}
+
+export function getYesterdayDailyNote(): { date: string; noteId: string } | null {
+	const current = todayDate();
+	const prev = getDb()
+		.prepare('SELECT note_date, note_id FROM daily_notes WHERE note_date < ? ORDER BY note_date DESC LIMIT 1')
+		.get(current) as { note_date: string; note_id: string } | undefined;
+
+	if (!prev) return null;
+	return { date: prev.note_date, noteId: prev.note_id };
+}
+
 export function getOrCreateTodayDashboard(): TodayDashboard {
 	const noteDate = todayDate();
 	const dailyMeta = getOrCreateDailyNoteMeta(noteDate);
@@ -1036,7 +1086,9 @@ export function getOrCreateTodayDashboard(): TodayDashboard {
 	return {
 		daily: getNoteDocument(dailyMeta.note_id),
 		dailyMeta,
-		shortcuts: buildTodayShortcuts(getWorkspaceSnapshot())
+		shortcuts: buildTodayShortcuts(getWorkspaceSnapshot()),
+		todayTasks: getTodayTasks(),
+		yesterdayNote: getYesterdayDailyNote()
 	};
 }
 
