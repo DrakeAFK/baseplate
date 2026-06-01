@@ -112,16 +112,15 @@
 </script>
 
 <div class="bp-page">
-	<section class="bp-hero p-6 md:p-7">
+	<section class="bp-hero pb-4">
 		<div class="bp-toolbar">
 			<div>
 				<p class="bp-kicker">Projects</p>
 				<h1 class="bp-page-title">Projects</h1>
-				<p class="bp-copy">Every durable stream of work gets a home.</p>
 			</div>
 			<a class="btn btn-primary" href="/projects/new">New project</a>
 		</div>
-		<div class="mt-5 bp-stat-grid md:grid-cols-4">
+		<div class="bp-stat-grid md:grid-cols-4">
 			{#each statuses as status}
 				<div class="bp-stat">
 					<p class="bp-meta">{status.replace('_', ' ')}</p>
@@ -131,8 +130,8 @@
 		</div>
 	</section>
 
-	<section class="bp-panel p-5">
-		<div class="relative z-10 grid gap-4 xl:grid-cols-[minmax(0,1fr)_14rem] xl:items-end">
+	<section class="bp-panel p-3">
+		<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)_12rem] xl:items-end">
 			<div class="tabs tabs-boxed w-fit">
 				{#each statuses as status}
 					<a class="tab gap-2" class:tab-active={data.status === status} href={`/projects?status=${status}`}>
@@ -141,6 +140,11 @@
 					</a>
 				{/each}
 			</div>
+			<form method="GET" class="grid gap-2">
+				<input type="hidden" name="status" value={data.status} />
+				<span class="bp-meta">Filter</span>
+				<input class="input input-bordered w-full" name="q" value={data.q} placeholder="Title or summary" />
+			</form>
 
 			<label class="grid gap-2">
 				<span class="bp-meta">Sort</span>
@@ -152,16 +156,10 @@
 			</label>
 		</div>
 
-		<div class="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-base-content/55">
-			<p>
-				{sortMode === 'manual'
-					? 'Drag cards or use the move controls to set the lane order.'
-					: sortMode === 'updated'
-						? 'Sorted by the most recently updated projects.'
-						: 'Sorted alphabetically by project title.'}
-			</p>
+		<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+			<p class="bp-meta">{visibleProjects.length} visible</p>
 			{#if savingOrder}
-				<span class="bp-meta">Saving order</span>
+				<span class="bp-pill bp-pill-blue">Saving order</span>
 			{/if}
 		</div>
 	</section>
@@ -171,67 +169,79 @@
 	{/if}
 
 	{#if visibleProjects.length}
-		<div class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-			{#each visibleProjects as project (project.id)}
-				<article
-					class={`bp-panel p-5 transition ${
-						dropProjectId === project.id && dragProjectId !== project.id
-							? 'border-info/55 ring-1 ring-info/30'
-							: 'hover:-translate-y-0.5 hover:border-info/30'
-					} ${dragProjectId === project.id ? 'opacity-65' : ''}`}
-					draggable={sortMode === 'manual' && !savingOrder}
-					ondragstart={(event) => handleDragStart(event, project.id)}
-					ondragover={(event) => handleDragOver(event, project.id)}
-					ondragenter={(event) => handleDragOver(event, project.id)}
-					ondrop={(event) => handleDrop(event, project.id)}
-					ondragend={clearDragState}
-				>
-					<div class="relative z-10 flex h-full flex-col justify-between gap-6">
-						<div class="flex items-start justify-between gap-4">
-							<div class="min-w-0">
-								<a class="block" href={`/projects/${project.slug}`}>
-									<h2 class="text-2xl font-semibold text-white">{project.title}</h2>
+		<section class="bp-panel overflow-hidden">
+			<table class="bp-data-table">
+				<thead>
+					<tr>
+						<th class="w-[44%]">Project</th>
+						<th>State</th>
+						<th>Updated</th>
+						<th class="w-[12rem] text-right">Order</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each visibleProjects as project (project.id)}
+						<tr
+							class={`transition ${
+								dropProjectId === project.id && dragProjectId !== project.id
+									? 'bg-info/10 ring-1 ring-info/30'
+									: ''
+							} ${dragProjectId === project.id ? 'opacity-65' : ''}`}
+							draggable={sortMode === 'manual' && !savingOrder}
+							ondragstart={(event) => handleDragStart(event, project.id)}
+							ondragover={(event) => handleDragOver(event, project.id)}
+							ondragenter={(event) => handleDragOver(event, project.id)}
+							ondrop={(event) => handleDrop(event, project.id)}
+							ondragend={clearDragState}
+						>
+							<td>
+								<a class="block min-w-0" href={`/projects/${project.slug}`}>
+									<p class="truncate font-semibold text-white">{project.title}</p>
 									{#if project.summary}
-										<p class="mt-2 text-sm leading-6 text-base-content/58">{project.summary}</p>
+										<p class="mt-1 line-clamp-2 text-sm leading-5 text-base-content/58">{project.summary}</p>
 									{/if}
 								</a>
-							</div>
-							<div class="grid gap-2 text-right">
-								<span class="badge badge-outline">{project.kind}</span>
-								<span class="badge badge-ghost">{project.status}</span>
-							</div>
-						</div>
-
-						<div class="flex items-center justify-between gap-3">
-							<p class="bp-meta">Updated {formatRelative(project.updated_at)}</p>
-							{#if sortMode === 'manual'}
-								<div class="flex items-center gap-2">
-									<button
-										type="button"
-										class="btn btn-ghost btn-xs"
-										onclick={() => moveProject(project.id, -1)}
-										disabled={!canMove(project.id, -1)}
-										aria-label={`Move ${project.title} up`}
-									>
-										Up
-									</button>
-									<button
-										type="button"
-										class="btn btn-ghost btn-xs"
-										onclick={() => moveProject(project.id, 1)}
-										disabled={!canMove(project.id, 1)}
-										aria-label={`Move ${project.title} down`}
-									>
-										Down
-									</button>
-									<span class="bp-meta">Drag</span>
+							</td>
+							<td>
+								<div class="flex flex-wrap gap-2">
+									<span class="badge badge-outline">{project.kind}</span>
+									<span class="badge badge-ghost">{project.status.replace('_', ' ')}</span>
 								</div>
-							{/if}
-						</div>
-					</div>
-				</article>
-			{/each}
-		</div>
+							</td>
+							<td>
+								<p class="bp-meta">{formatRelative(project.updated_at)}</p>
+							</td>
+							<td>
+								{#if sortMode === 'manual'}
+									<div class="flex items-center justify-end gap-2">
+										<button
+											type="button"
+											class="btn btn-ghost btn-xs"
+											onclick={() => moveProject(project.id, -1)}
+											disabled={!canMove(project.id, -1)}
+											aria-label={`Move ${project.title} up`}
+										>
+											Up
+										</button>
+										<button
+											type="button"
+											class="btn btn-ghost btn-xs"
+											onclick={() => moveProject(project.id, 1)}
+											disabled={!canMove(project.id, 1)}
+											aria-label={`Move ${project.title} down`}
+										>
+											Down
+										</button>
+									</div>
+								{:else}
+									<p class="bp-meta text-right">{sortMode}</p>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</section>
 	{:else}
 		<div class="bp-empty p-10 text-center">No projects match this status yet.</div>
 	{/if}

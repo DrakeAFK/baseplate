@@ -71,19 +71,18 @@
 </script>
 
 <div class="bp-page">
-	<section class="bp-hero p-6 md:p-7">
+	<section class="bp-hero pb-4">
 		<div class="bp-toolbar">
 			<div>
 				<p class="bp-kicker">Notes</p>
 				<h1 class="bp-page-title">Notes</h1>
-				<p class="bp-copy">Docs, decisions, meetings, daily notes, and inbox capture.</p>
 			</div>
 			<span class="bp-pill">{filteredNotes.length} results</span>
 		</div>
 	</section>
 
-	<section class="bp-panel p-5">
-		<div class="relative z-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem_16rem]">
+	<section class="bp-panel p-3">
+		<div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem_16rem]">
 			<input class="input input-bordered w-full" bind:value={q} placeholder="Filter by title, excerpt, project, or kind" />
 			<select class="select select-bordered w-full" bind:value={kind}>
 				<option value="all">All note types</option>
@@ -101,29 +100,48 @@
 	</section>
 
 	{#if noteGroups.length}
-		<div class="grid gap-6">
+		<div class="grid gap-4">
 			{#each noteGroups as group}
 				<section class="grid gap-4">
 					<div class="flex items-center justify-between gap-3">
-						<h2 class="text-xl font-semibold text-white">{group.label}</h2>
+						<h2 class="bp-section-title">{group.label}</h2>
 						<span class="bp-meta">{group.items.length}</span>
 					</div>
-					<div class="grid gap-3 lg:grid-cols-2">
-						{#each group.items as item}
-							<a class="bp-list-card px-5 py-4" href={item.href ?? '/notes'}>
-								<div class="flex flex-wrap items-center justify-between gap-3">
-									<div>
-										<p class="font-medium text-white">{noteTitle(item)}</p>
-										<p class="mt-1 text-sm text-base-content/60">{noteContext(item)} · {itemKindLabel(item.note.kind)}</p>
-									</div>
-									<p class="bp-meta">{formatRelative(item.note.updated_at)}</p>
-								</div>
-								{#if item.note.excerpt}
-									<p class="mt-3 text-sm text-base-content/55">{item.note.excerpt}</p>
-								{/if}
-							</a>
-						{/each}
-					</div>
+					<section class="bp-panel overflow-hidden">
+						<table class="bp-data-table">
+							<thead>
+								<tr>
+									<th class="w-[44%]">Title</th>
+									<th>Context</th>
+									<th>Kind</th>
+									<th>Updated</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each group.items as item}
+									<tr>
+										<td>
+											<a class="block min-w-0" href={item.href ?? '/notes'}>
+												<p class="truncate font-medium text-white">{noteTitle(item)}</p>
+												{#if item.note.excerpt}
+													<p class="mt-1 line-clamp-2 text-sm text-base-content/55">{item.note.excerpt}</p>
+												{/if}
+											</a>
+										</td>
+										<td>
+											<p class="truncate text-sm text-base-content/70">{noteContext(item)}</p>
+										</td>
+										<td>
+											<span class="badge badge-ghost">{itemKindLabel(item.note.kind)}</span>
+										</td>
+										<td>
+											<p class="bp-meta">{formatRelative(item.note.updated_at)}</p>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</section>
 				</section>
 			{/each}
 		</div>

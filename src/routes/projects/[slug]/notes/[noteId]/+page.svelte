@@ -45,16 +45,16 @@
 </script>
 
 <div class="bp-page">
-	<section class="bp-hero p-6 md:p-7">
+	<section class="bp-hero pb-4">
 		<div class="bp-toolbar">
 			<div class="max-w-3xl">
 				<p class="bp-kicker">{kindLabel}</p>
-				<input class="input input-bordered mt-4 h-[3.25rem] w-full text-3xl font-semibold text-white" bind:value={title} />
-				<p class="mt-4 text-base-content/65">{document.project?.title} · Updated {formatRelative(document.note.updated_at)}</p>
+				<input class="input input-bordered mt-3 h-12 w-full text-[1.45rem] font-semibold text-white" bind:value={title} />
+				<p class="mt-3 text-sm text-base-content/65">{document.project?.title} / Updated {formatRelative(document.note.updated_at)}</p>
 			</div>
 			<div class="flex gap-2">
 				<button class="btn btn-primary btn-sm" onclick={saveMeta} disabled={saving || !title.trim()}>
-					{saving ? 'Saving…' : 'Save title'}
+					{saving ? 'Saving...' : 'Save title'}
 				</button>
 				{#if document.project}
 					<a class="btn btn-ghost btn-sm" href={`/projects/${document.project.slug}`}>{backLabel}</a>
@@ -66,23 +66,23 @@
 		{/if}
 	</section>
 
-	<MarkdownEditor
-		value={document.body}
-		saveUrl={`/api/notes/${document.note.id}/content`}
-		previewHtml={document.html}
-		label={document.note.kind === 'project_home' ? 'Project overview' : 'Note body'}
-		onSaved={(payload) => {
-			if (payload && typeof payload === 'object' && 'document' in payload) {
-				document = payload.document as PageData;
-				title = document.note.title;
-			}
-		}}
-	/>
+	<div class="bp-page-grid">
+		<MarkdownEditor
+			value={document.body}
+			saveUrl={`/api/notes/${document.note.id}/content`}
+			previewHtml={document.html}
+			label={document.note.kind === 'project_home' ? 'Project overview' : 'Note body'}
+			onSaved={(payload) => {
+				if (payload && typeof payload === 'object' && 'document' in payload) {
+					document = payload.document as PageData;
+					title = document.note.title;
+				}
+			}}
+		/>
 
-	<section class="bp-panel p-5">
-		<div class="relative z-10">
-			<h2 class="text-xl font-semibold text-white">Backlinks</h2>
-			<div class="mt-4 bp-list">
+		<section class="bp-panel p-4">
+			<h2 class="bp-section-title">Backlinks</h2>
+			<div class="bp-list mt-4">
 				{#if document.backlinks.length}
 					{#each document.backlinks as backlink}
 						<a class="bp-list-card" href={backlink.href ?? `/projects/${document.project?.slug ?? ''}`}>
@@ -94,9 +94,9 @@
 						</a>
 					{/each}
 				{:else}
-					<p class="bp-empty">References to this note show up here.</p>
+					<p class="bp-empty">No backlinks.</p>
 				{/if}
 			</div>
-		</div>
-	</section>
+		</section>
+	</div>
 </div>

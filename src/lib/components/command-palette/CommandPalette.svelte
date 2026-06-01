@@ -60,44 +60,44 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 z-50 bg-[rgba(2,7,14,0.76)] p-4 backdrop-blur-md"
+		class="fixed inset-0 z-50 bg-[rgba(1,4,9,0.8)] p-4 backdrop-blur-sm"
 		role="button"
 		tabindex="0"
 		onclick={onClose}
 		onkeydown={(event) => event.key === 'Escape' && onClose()}
 	>
-		<div class="bp-panel mx-auto mt-12 max-w-2xl p-4" role="presentation" onclick={(event) => event.stopPropagation()}>
-			<div class="relative z-10 grid gap-4">
-				<div class="px-2 pt-1">
-					<p class="bp-kicker">Command palette</p>
-					<p class="mt-2 text-sm text-base-content/55">Navigate, open recent work, or trigger a quick create action.</p>
+		<div class="bp-panel mx-auto mt-12 max-w-2xl overflow-hidden" role="presentation" onclick={(event) => event.stopPropagation()}>
+			<div class="grid gap-3 border-b border-[var(--bp-border)] bg-[#010409] p-3">
+				<div class="flex items-center justify-between gap-3">
+					<p class="bp-kicker">Command</p>
+					<kbd class="kbd">esc</kbd>
 				</div>
-				<div class="rounded-[1.35rem] border border-white/10 bg-black/10 px-4 py-3">
+				<div class="border border-[var(--bp-border)] bg-[var(--bp-bg)] px-3 py-2">
 					<input
 						bind:this={inputEl}
-						class="input input-ghost h-12 w-full border-none bg-transparent px-0 text-base shadow-none focus:shadow-none"
+						class="input input-ghost h-10 w-full border-none bg-transparent px-0 text-base shadow-none focus:shadow-none"
 						bind:value={query}
 						onkeydown={handleKeydown}
-						placeholder="Search navigation, actions, and recent items"
+						placeholder="Type a command or destination"
 					/>
 				</div>
 			</div>
-			<div class="relative z-10 mt-4 max-h-[28rem] overflow-y-auto p-1">
+			<div class="max-h-[28rem] overflow-y-auto p-1">
 				{#each filtered as item, index (item.id)}
 					<button
 						class={cn(
-							'flex w-full items-center justify-between rounded-[1.2rem] px-4 py-3 text-left transition hover:bg-white/10',
+							'grid w-full grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 rounded-[0.25rem] px-3 py-2 text-left transition hover:bg-white/10',
 							index === activeIndex && 'bg-white/10'
 						)}
 						onmouseenter={() => (activeIndex = index)}
 						onclick={() => activate(item)}
 					>
-						<span class="font-medium text-white">{item.label}</span>
-						<span class="bp-meta">{item.group}</span>
+						<span class="truncate font-medium text-white">{item.label}</span>
+						<span class="bp-meta text-right">{item.group}</span>
 					</button>
 				{/each}
 				{#if !filtered.length}
-					<p class="bp-empty px-4 py-8 text-sm">No results matched.</p>
+					<p class="bp-empty m-2 px-4 py-8 text-sm">No matches.</p>
 				{/if}
 			</div>
 		</div>

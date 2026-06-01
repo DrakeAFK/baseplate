@@ -26,6 +26,8 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let queuedSave = $state(false);
 	let textarea = $state<HTMLTextAreaElement | null>(null);
+	const lineCount = $derived(draft ? draft.split('\n').length : 1);
+	const charCount = $derived(draft.length);
 
 	type SelectionSnapshot = {
 		start: number;
@@ -72,6 +74,13 @@
 	function scheduleSave(): void {
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => void save(), 450);
+	}
+
+	function handleKeydown(event: KeyboardEvent): void {
+		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+			event.preventDefault();
+			void save();
+		}
 	}
 
 	async function save(): Promise<void> {
@@ -129,11 +138,12 @@
 	});
 </script>
 
-<div class="bp-panel grid gap-5 p-4 md:p-5">
-	<div class="relative z-10 flex flex-wrap items-center justify-between gap-3">
-		<div>
+<div class="bp-editor-shell">
+	<div class="bp-editor-toolbar">
+		<div class="flex flex-wrap items-center gap-3">
 			<p class="bp-kicker">{label}</p>
-			<p class="mt-2 text-sm text-base-content/55">Autosaves while you work.</p>
+			<span class="bp-meta">{lineCount} lines</span>
+			<span class="bp-meta">{charCount} chars</span>
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
 			<div class="tabs tabs-boxed">
@@ -142,28 +152,28 @@
 				<button class="tab" class:tab-active={mode === 'preview'} onclick={() => (mode = 'preview')}>Preview</button>
 			</div>
 			<span class="bp-pill">
-				{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : 'Ready'}
+				{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Error' : 'Clean'}
 			</span>
 		</div>
 	</div>
 
-	<div class={`relative z-10 grid gap-4 ${mode === 'split' ? 'xl:grid-cols-2' : ''}`}>
+	<div class={`bp-editor-grid ${mode === 'split' ? 'is-split' : ''}`}>
 		{#if mode !== 'preview'}
-			<div class="bp-panel-soft grid min-w-0 gap-3 p-3">
+			<div class="bp-editor-pane">
 				<textarea
 					bind:this={textarea}
-					class="textarea min-h-[34rem] w-full resize-y border-none bg-transparent font-mono text-sm leading-7 shadow-none focus:shadow-none"
+					class="bp-editor-textarea"
 					bind:value={draft}
 					oninput={scheduleSave}
+					onkeydown={handleKeydown}
 					onblur={() => void save()}
+					spellcheck="false"
 				></textarea>
-				<div class="bp-divider"></div>
-				<p class="text-xs uppercase tracking-[0.24em] text-base-content/42">Markdown</p>
 			</div>
 		{/if}
 
 		{#if mode !== 'edit'}
-			<div class="bp-panel-soft prose prose-invert min-h-[34rem] min-w-0 max-w-none p-5">
+			<div class="bp-editor-pane prose prose-invert bp-editor-preview">
 				{@html renderedHtml}
 			</div>
 		{/if}

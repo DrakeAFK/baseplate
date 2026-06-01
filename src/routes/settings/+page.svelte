@@ -22,11 +22,10 @@
 </script>
 
 <div class="bp-page max-w-6xl">
-	<section class="bp-hero p-6 md:p-7">
+	<section class="bp-hero pb-4">
 		<div>
 			<p class="bp-kicker">Settings</p>
 			<h1 class="bp-page-title">Settings</h1>
-			<p class="bp-copy">Workspace status, storage details, and search maintenance.</p>
 		</div>
 	</section>
 
@@ -49,9 +48,9 @@
 		</div>
 	</div>
 
-	<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-		<section class="bp-panel p-5">
-			<div class="relative z-10 grid gap-5">
+	<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+		<section class="bp-panel p-4">
+			<div class="grid gap-5">
 				<div>
 					<p class="bp-meta">Workspace path</p>
 					<p class="mt-2 font-mono text-sm text-white">{data.workspaceDir}</p>
@@ -67,13 +66,12 @@
 			</div>
 		</section>
 
-		<section class="bp-panel p-5">
-			<div class="relative z-10">
-				<h2 class="text-xl font-semibold text-white">Search maintenance</h2>
-				<p class="mt-2 text-sm text-base-content/60">Reindex if search or backlinks need a fresh scan.</p>
-				<div class="mt-5 grid gap-3">
+		<section class="bp-panel p-4">
+			<div>
+				<h2 class="bp-section-title">Search maintenance</h2>
+				<div class="mt-4 grid gap-3">
 					<button class="btn btn-primary" onclick={reindex} disabled={reindexState === 'working'}>
-						{reindexState === 'working' ? 'Reindexing…' : 'Reindex workspace'}
+						{reindexState === 'working' ? 'Reindexing...' : 'Reindex workspace'}
 					</button>
 					{#if reindexMessage}
 						<p class={`text-sm ${reindexState === 'error' ? 'text-error' : 'text-success'}`}>{reindexMessage}</p>

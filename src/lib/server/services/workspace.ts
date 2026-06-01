@@ -150,8 +150,12 @@ function createProjectFolders(slug: string): void {
 	}
 }
 
-function findAvailablePath(filePath: string): string {
-	if (!fileExists(filePath)) {
+function samePath(left: string, right: string | null | undefined): boolean {
+	return right ? path.resolve(left) === path.resolve(right) : false;
+}
+
+function findAvailablePath(filePath: string, currentPath?: string): string {
+	if (!fileExists(filePath) || samePath(filePath, currentPath)) {
 		return filePath;
 	}
 
@@ -162,7 +166,7 @@ function findAvailablePath(filePath: string): string {
 
 	while (true) {
 		const candidate = path.join(directory, `${baseName}-${counter}${extension}`);
-		if (!fileExists(candidate)) {
+		if (!fileExists(candidate) || samePath(candidate, currentPath)) {
 			return candidate;
 		}
 		counter += 1;
@@ -280,7 +284,7 @@ function startWatcher(): void {
 	});
 }
 
-export function listActiveProjects(limit = 8): ProjectWithCounts[] {
+export function listActiveProjects(limit = 24): ProjectWithCounts[] {
 	return getDb()
 		.prepare(
 			`SELECT projects.*,
@@ -548,7 +552,8 @@ export function updateNote(id: string, patch: Partial<Pick<Note, 'title'>>): Not
 	let nextPath = note.file_path;
 	if (patch.title && projectSlug && ['note', 'doc', 'decision'].includes(note.kind)) {
 		nextPath = findAvailablePath(
-			getProjectNotePath(projectSlug, note.kind as 'note' | 'doc' | 'decision', toSlug(patch.title))
+			getProjectNotePath(projectSlug, note.kind as 'note' | 'doc' | 'decision', toSlug(patch.title)),
+			note.file_path
 		);
 		if (nextPath !== note.file_path && fileExists(note.file_path)) {
 			fs.mkdirSync(path.dirname(nextPath), { recursive: true });
@@ -636,7 +641,7 @@ export function updateMeeting(id: string, patch: Partial<Pick<Meeting, 'title' |
 
 	const nextTitle = patch.title ?? meeting.title;
 	const nextDate = patch.meeting_date ?? meeting.meeting_date;
-	const nextPath = findAvailablePath(getMeetingPath(projectSlug, nextDate, toSlug(nextTitle)));
+	const nextPath = findAvailablePath(getMeetingPath(projectSlug, nextDate, toSlug(nextTitle)), note.file_path);
 	if (nextPath !== note.file_path && fileExists(note.file_path)) {
 		fs.mkdirSync(path.dirname(nextPath), { recursive: true });
 		fs.renameSync(note.file_path, nextPath);
@@ -1143,15 +1148,22 @@ export function getDailyNoteDocumentByDate(noteDate: string): { daily: NoteDocum
 export function searchWorkspace(query: string, filters?: { type?: SearchObjectType | 'all'; projectId?: string }): SearchResult[] {
 	if (!query.trim()) return [];
 	const db = getDb();
-	const rows = db
-		.prepare(
-			`SELECT *
-			 FROM search_fts
-			 WHERE search_fts MATCH ?
-			 ORDER BY rank, updated_at DESC
-			 LIMIT 30`
-		)
-		.all(`${query.replace(/"/g, '""')}*`) as Omit<SearchResult, 'href'>[];
+	const ftsQuery = buildFtsQuery(query);
+	if (!ftsQuery) return [];
+	let rows: Omit<SearchResult, 'href'>[];
+	try {
+		rows = db
+			.prepare(
+				`SELECT *
+				 FROM search_fts
+				 WHERE search_fts MATCH ?
+				 ORDER BY rank, updated_at DESC
+				 LIMIT 30`
+			)
+			.all(ftsQuery) as Omit<SearchResult, 'href'>[];
+	} catch {
+		return [];
+	}
 	return rows
 		.filter((row) => {
 			if (filters?.type && filters.type !== 'all' && row.object_type !== filters.type) return false;
@@ -1165,6 +1177,12 @@ export function searchWorkspace(query: string, filters?: { type?: SearchObjectTy
 			...row,
 			href: resolveObjectHref(row.object_type, row.object_id)
 		}));
+}
+
+function buildFtsQuery(query: string): string {
+	return (query.match(/[A-Za-z0-9_]+/g) ?? [])
+		.map((term) => `"${term.replaceAll('"', '""')}"*`)
+		.join(' ');
 }
 
 function upsertRecentItem(objectType: SearchObjectType, objectId: string): void {
@@ -1250,7 +1268,7 @@ function getShellPulseCollections(snapshot: AppShellData['snapshot']): AppShellD
 				href: `/projects/${project.slug}`,
 				primary: project.title,
 				secondary: project.summary || `${labelFromSnakeCase(project.kind)} project`,
-				tertiary: `${labelFromSnakeCase(project.status)} · ${formatRelative(project.updated_at)}`
+				tertiary: `${labelFromSnakeCase(project.status)} / ${formatRelative(project.updated_at)}`
 			}))
 		},
 		{
@@ -1259,7 +1277,7 @@ function getShellPulseCollections(snapshot: AppShellData['snapshot']): AppShellD
 			description: 'Only todo, in-progress, and blocked tasks show up here.',
 			count: snapshot.openTaskCount,
 			countLabel: 'open',
-			summary: `${taskCounts.todo} todo · ${taskCounts.in_progress} in progress · ${taskCounts.blocked} blocked`,
+			summary: `${taskCounts.todo} todo / ${taskCounts.in_progress} in progress / ${taskCounts.blocked} blocked`,
 			columns: ['Task', 'Project', 'State'],
 			emptyMessage: 'Open tasks show up here as soon as they exist.',
 			rows: tasks.map((task) => ({
@@ -1267,7 +1285,7 @@ function getShellPulseCollections(snapshot: AppShellData['snapshot']): AppShellD
 				href: `/projects/${task.project_slug}#task-${task.id}`,
 				primary: task.title,
 				secondary: task.project_title,
-				tertiary: `${labelFromSnakeCase(task.status)} · ${
+				tertiary: `${labelFromSnakeCase(task.status)} / ${
 					task.due_at
 						? `due ${formatDate(task.due_at)}`
 						: task.scheduled_for
@@ -1304,8 +1322,8 @@ export function getShellData(): AppShellData {
 
 	return {
 		workspaceDir: getWorkspaceDir(),
-		activeProjects: listActiveProjects(),
-		allProjects: listActiveProjects(50),
+		activeProjects: listActiveProjects(100),
+		allProjects: listActiveProjects(200),
 		snapshot,
 		pulseCollections: getShellPulseCollections(snapshot),
 		recentItems: recent,

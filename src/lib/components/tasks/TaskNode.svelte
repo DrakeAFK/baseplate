@@ -22,7 +22,7 @@
 	const statusOptions: TaskStatus[] = ['todo', 'in_progress', 'blocked', 'done', 'cancelled'];
 	const priorityOptions: TaskPriority[] = ['low', 'medium', 'high', 'urgent'];
 	const statusLabels: Record<TaskStatus, string> = {
-		todo: 'Ready',
+		todo: 'Todo',
 		in_progress: 'In progress',
 		blocked: 'Blocked',
 		done: 'Done',
@@ -77,15 +77,8 @@
 		if (value === 'in_progress') return 'border-info/25 bg-info/10 text-info';
 		if (value === 'blocked') return 'border-error/25 bg-error/10 text-error';
 		if (value === 'done') return 'border-success/25 bg-success/10 text-success';
-		if (value === 'cancelled') return 'border-white/10 bg-[#1a1d24] text-base-content/45';
+		if (value === 'cancelled') return 'border-white/10 bg-[#0d1117] text-base-content/45';
 		return 'border-white/10 bg-white/[0.04] text-base-content/72';
-	}
-
-	function toneForPriority(value: TaskPriority): string {
-		if (value === 'urgent') return 'border-error/20 bg-error/10 text-error';
-		if (value === 'high') return 'border-warning/30 bg-warning/10 text-warning';
-		if (value === 'low') return 'border-white/10 bg-[#1d2128] text-base-content/52';
-		return 'border-white/10 bg-white/[0.04] text-base-content/68';
 	}
 
 	function resetDraft(): void {
@@ -127,28 +120,28 @@
 <article
 	id={`task-${item.id}`}
 	class={cn(
-		'bp-task-card scroll-mt-28 transition',
-		isHighlighted && 'border-primary/60 bg-white/10 shadow-[0_18px_45px_rgba(125,211,252,0.12)]'
+		'bp-task-card is-compact scroll-mt-28 transition',
+		isHighlighted && 'border-primary/60 bg-white/10 shadow-[0_18px_45px_rgba(88,166,255,0.12)]'
 	)}
-	style={`margin-left:${depth * 18}px`}
+	style={`margin-left:${Math.min(depth * 14, 42)}px`}
 >
-	<div class="flex flex-wrap items-start justify-between gap-4">
-		<div class="min-w-0 flex-1">
+	<div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+		<div class="min-w-0">
 			<div class="flex flex-wrap items-center gap-2">
+				<span class={`bp-priority-dot ${priority}`} title={`${priority} priority`}></span>
 				<span class={cn('bp-task-chip', toneForStatus(status))}>{statusLabels[status]}</span>
-				<span class={cn('bp-task-chip', toneForPriority(priority))}>{priority} priority</span>
 				{#if scheduledFor}
-					<span class="bp-task-chip border-white/10 bg-white/[0.04] text-base-content/68">Scheduled {formatDate(scheduledFor)}</span>
+					<span class="bp-task-chip border-white/10 bg-white/[0.04] text-base-content/68">sched {formatDate(scheduledFor)}</span>
 				{/if}
 				{#if dueAt}
 					<span class="bp-task-chip border-warning/25 bg-warning/10 text-warning">Due {formatDate(dueAt)}</span>
 				{/if}
-				<span class="bp-meta">Updated {formatRelative(item.updated_at)}</span>
 				{#if item.children.length}
 					<span class="bp-task-chip border-white/10 bg-white/[0.04] text-base-content/68">
-						{item.children.length} subtask{item.children.length === 1 ? '' : 's'}
+						{item.children.length} child{item.children.length === 1 ? '' : 'ren'}
 					</span>
 				{/if}
+				<span class="bp-meta">upd {formatRelative(item.updated_at)}</span>
 			</div>
 			<input class="bp-task-title-input mt-3" bind:value={title} />
 			{#if !detailsOpen && summaryText}
@@ -156,8 +149,8 @@
 			{/if}
 		</div>
 
-		<div class="flex flex-wrap items-center gap-2 lg:justify-end">
-			<select class="select select-bordered select-sm min-w-[10.5rem]" bind:value={status}>
+		<div class="flex flex-wrap items-center gap-2 xl:justify-end">
+			<select class="select select-bordered select-sm min-w-[9.5rem]" bind:value={status} aria-label="Status">
 				{#each statusOptions as option}
 					<option value={option}>{option.replaceAll('_', ' ')}</option>
 				{/each}
@@ -182,7 +175,7 @@
 			</button>
 			{#if dirty}
 				<button class="btn btn-sm btn-primary" onclick={save} disabled={saveState === 'saving'}>
-					{saveState === 'saving' ? 'Saving…' : 'Save'}
+					{saveState === 'saving' ? 'Saving...' : 'Save'}
 				</button>
 				<button class="btn btn-sm btn-ghost" onclick={resetDraft}>Reset</button>
 			{/if}
@@ -191,7 +184,7 @@
 
 	{#if detailsOpen}
 		<div class="bp-task-details">
-			<div class="grid gap-3 lg:grid-cols-[11rem_11rem_11rem_auto]">
+			<div class="grid gap-3 lg:grid-cols-[10rem_10rem_10rem_auto]">
 				<label class="grid gap-2">
 					<span class="bp-meta">Priority</span>
 					<select class="select select-bordered w-full" bind:value={priority}>
@@ -209,18 +202,16 @@
 					<input class="input input-bordered w-full" type="date" bind:value={dueAt} />
 				</label>
 				<div class="flex items-end justify-end">
-					<p class="text-sm text-base-content/55">
-						{item.parent_task_id ? 'Nested under a parent task.' : 'Top-level project task.'}
-					</p>
+					<p class="bp-meta">{item.parent_task_id ? 'child task' : 'root task'}</p>
 				</div>
 			</div>
 
 			<label class="grid gap-2">
-				<span class="bp-meta">Working notes</span>
+				<span class="bp-meta">Notes</span>
 				<textarea
 					class="textarea textarea-bordered min-h-28 w-full"
 					bind:value={description}
-					placeholder="Capture acceptance criteria, blockers, context, or links."
+					placeholder="Acceptance criteria, blockers, context, links"
 				></textarea>
 			</label>
 

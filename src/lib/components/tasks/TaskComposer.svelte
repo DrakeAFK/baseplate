@@ -85,28 +85,24 @@
 		{submitLabel}
 	</button>
 {:else}
-	<div class="bp-panel-soft grid gap-4 p-4">
+	<div class="bp-panel-soft grid gap-3 p-3">
 		<div class="bp-toolbar">
-			<div>
+			<div class="flex items-center gap-3">
 				<p class="bp-kicker">{parentTaskId ? 'Subtask' : 'New task'}</p>
-				<p class="mt-2 text-sm text-base-content/55">
-					{parentTaskId
-						? 'Capture the next concrete step under this task.'
-						: 'Add work fast, then open the extra fields only when the task needs more shape.'}
-				</p>
+				<span class="bp-meta">{status.replaceAll('_', ' ')} / {priority}</span>
 			</div>
 			<button class="btn btn-ghost btn-sm" onclick={() => (detailsOpen = !detailsOpen)}>
-				{detailsOpen ? 'Hide fields' : 'More fields'}
+				{detailsOpen ? 'Less' : 'More'}
 			</button>
 		</div>
 
-		<div class="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_11rem_11rem_auto] xl:items-end">
+		<div class="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_10rem_10rem_auto] xl:items-end">
 			<label class="grid gap-2">
-				<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Title</span>
+				<span class="bp-meta">Title</span>
 				<input class="input input-bordered w-full" bind:value={title} placeholder={parentTaskId ? 'Subtask title' : 'Task title'} />
 			</label>
 			<label class="grid gap-2">
-				<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Status</span>
+				<span class="bp-meta">Status</span>
 				<select class="select select-bordered w-full" bind:value={status}>
 					{#each statusOptions as option}
 						<option value={option}>{option.replaceAll('_', ' ')}</option>
@@ -114,7 +110,7 @@
 				</select>
 			</label>
 			<label class="grid gap-2">
-				<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Priority</span>
+				<span class="bp-meta">Priority</span>
 				<select class="select select-bordered w-full" bind:value={priority}>
 					{#each priorityOptions as option}
 						<option value={option}>{option}</option>
@@ -123,27 +119,27 @@
 			</label>
 			<div class="flex items-end justify-end">
 				<button class="btn btn-primary w-full xl:w-auto" onclick={submit} disabled={saving || !title.trim()}>
-					{saving ? 'Saving…' : submitLabel}
+					{saving ? 'Saving...' : submitLabel}
 				</button>
 			</div>
 		</div>
 
 		{#if detailsOpen}
-			<div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_11rem_11rem]">
+			<div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem]">
 				<label class="grid gap-2">
-					<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Working notes</span>
+					<span class="bp-meta">Notes</span>
 					<textarea
 						class="textarea textarea-bordered min-h-24 w-full"
 						bind:value={description}
-						placeholder="Context, next steps, dependencies, or acceptance notes"
+						placeholder="Context, blockers, acceptance notes"
 					></textarea>
 				</label>
 				<label class="grid gap-2">
-					<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Scheduled</span>
+					<span class="bp-meta">Scheduled</span>
 					<input class="input input-bordered w-full" type="date" bind:value={scheduledFor} />
 				</label>
 				<label class="grid gap-2">
-					<span class="text-xs uppercase tracking-[0.24em] text-base-content/45">Due</span>
+					<span class="bp-meta">Due</span>
 					<input class="input input-bordered w-full" type="date" bind:value={dueAt} />
 				</label>
 			</div>

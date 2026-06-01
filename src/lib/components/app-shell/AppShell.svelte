@@ -6,7 +6,7 @@
 	import { todayDate } from '$lib/utils/dates';
 	import { slide } from 'svelte/transition';
 	import type { Snippet } from 'svelte';
-	import type { AppShellData, TaskPriority, TaskStatus, Project, ProjectWithCounts } from '$lib/types/models';
+	import type { AppShellData, TaskPriority, TaskStatus, Project } from '$lib/types/models';
 
 	type Modal = 'project' | 'task' | 'meeting' | 'note';
 
@@ -43,14 +43,16 @@
 
 	/* ── Nav helpers ── */
 	const railItems = [
-		{ href: '/today', icon: '◉', label: 'Today' },
-		{ href: '/projects', icon: '▦', label: 'Projects' },
-		{ href: '/search', icon: '⌕', label: 'Search' },
-		{ href: '/inbox', icon: '▤', label: 'Inbox' },
-		{ href: '/settings', icon: '⚙', label: 'Settings' }
+		{ href: '/today', icon: 'T', label: 'Today' },
+		{ href: '/projects', icon: 'P', label: 'Projects' },
+		{ href: '/search', icon: '/', label: 'Search' },
+		{ href: '/notes', icon: 'N', label: 'Notes' },
+		{ href: '/inbox', icon: 'I', label: 'Inbox' },
+		{ href: '/settings', icon: 'S', label: 'Settings' }
 	];
 
 	const currentPath = $derived(page.url.pathname);
+	const currentHash = $derived(page.url.hash);
 
 	function routeMatches(href: string): boolean {
 		return currentPath === href || currentPath.startsWith(`${href}/`);
@@ -62,9 +64,6 @@
 
 	/* ── Derive current page context for header ── */
 	const headerContext = $derived.by(() => {
-		for (const item of railItems) {
-			if (routeMatches(item.href)) return { label: item.label, sub: '' };
-		}
 		const slug = currentPath.startsWith('/projects/') ? currentPath.split('/')[2] : null;
 		if (slug) {
 			const project = shell.allProjects.find((p: Project) => p.slug === slug);
@@ -73,6 +72,9 @@
 				const sub = section === 'meetings' ? 'Meetings' : section === 'notes' ? 'Notes' : '';
 				return { label: project.title, sub };
 			}
+		}
+		for (const item of railItems) {
+			if (routeMatches(item.href)) return { label: item.label, sub: '' };
 		}
 		if (currentPath === '/projects') return { label: 'Projects', sub: '' };
 		if (currentPath === '/notes') return { label: 'Notes', sub: '' };
@@ -246,41 +248,74 @@
 
 		<button
 			class="bp-rail-icon"
-			title="Quick create (Ctrl+K)"
+			title="Command palette"
 			onclick={() => (paletteOpen = true)}
 		>
-			⌘
+			K
 		</button>
 	</nav>
 
 	<!-- ═══ Channel Panel ═══ -->
 	<aside class="bp-channels" data-sveltekit-preload-data="off">
 		<div class="bp-channels-header">
-			<h2>Workspace</h2>
-			<button
-				class="bp-channel-group-action"
-				title="New project"
-				onclick={() => openModal('project')}
-			>
-				+
-			</button>
+			<div class="bp-channels-title-row">
+				<h2>baseplate</h2>
+				<button
+					class="bp-channel-group-action"
+					title="New project"
+					aria-label="New project"
+					onclick={() => openModal('project')}
+				>
+					+
+				</button>
+			</div>
+			<div class="bp-shell-snapshot" aria-label="Workspace snapshot">
+				<div class="bp-shell-stat">
+					<strong>{shell.snapshot.projectCount}</strong>
+					<span>proj</span>
+				</div>
+				<div class="bp-shell-stat">
+					<strong>{shell.snapshot.openTaskCount}</strong>
+					<span>open</span>
+				</div>
+				<div class="bp-shell-stat">
+					<strong>{shell.snapshot.noteCount}</strong>
+					<span>notes</span>
+				</div>
+				<div class="bp-shell-stat">
+					<strong>{shell.snapshot.meetingCount}</strong>
+					<span>mtgs</span>
+				</div>
+			</div>
 		</div>
 
 		<div class="bp-channels-body">
 			<!-- Search trigger -->
-			<div class="bp-channel-meta" style="padding-bottom: 0.25rem;">
+			<div class="bp-channel-meta">
 				<button class="bp-channel-search" onclick={() => (paletteOpen = true)}>
-					<span>⌕</span>
+					<span>/</span>
 					<span>Search / jump</span>
-					<kbd class="kbd kbd-xs">⌘K</kbd>
+					<kbd class="kbd kbd-xs">K</kbd>
 				</button>
 			</div>
 
 			<!-- Meta nav items -->
 			<div class="bp-channel-meta">
+				<a class={`bp-channel-meta-item ${routeMatches('/today') ? 'is-active' : ''}`} href="/today">
+					<span class="bp-channel-icon">T</span>
+					<span>Today</span>
+				</a>
+				<a class={`bp-channel-meta-item ${currentPath === '/projects' ? 'is-active' : ''}`} href="/projects">
+					<span class="bp-channel-icon">P</span>
+					<span>Projects</span>
+				</a>
 				<a class={`bp-channel-meta-item ${routeMatches('/notes') && !currentPath.startsWith('/projects') ? 'is-active' : ''}`} href="/notes">
-					<span>📄</span>
+					<span class="bp-channel-icon">N</span>
 					<span>All Notes</span>
+				</a>
+				<a class={`bp-channel-meta-item ${routeMatches('/inbox') ? 'is-active' : ''}`} href="/inbox">
+					<span class="bp-channel-icon">I</span>
+					<span>Inbox</span>
 				</a>
 			</div>
 
@@ -295,12 +330,13 @@
 						class="bp-channel-group-header"
 						onclick={() => toggleProject(project.id)}
 					>
-						<span class={`bp-chevron ${collapsed[project.id] ? 'is-collapsed' : ''}`}>▾</span>
-						<span>{project.title}</span>
+						<span class={`bp-chevron ${collapsed[project.id] ? 'is-collapsed' : ''}`}>v</span>
+						<span class="bp-channel-group-title">{project.title}</span>
 						<span class="bp-group-actions">
 							<button
 								class="bp-channel-group-action"
 								title="Add task"
+								aria-label={`Add task to ${project.title}`}
 								onclick={(e) => { e.stopPropagation(); openModal('task', project.id); }}
 							>+</button>
 						</span>
@@ -312,27 +348,27 @@
 								class={`bp-channel-item ${isProjectActive(project.slug) && !currentPath.includes('/notes/') && !currentPath.includes('/meetings/') ? 'is-active' : ''}`}
 								href={`/projects/${project.slug}`}
 							>
-								<span class="bp-channel-icon">▦</span>
+								<span class="bp-channel-icon">#</span>
 								<span>Overview</span>
 								{#if project.openTaskCount > 0}
 									<span class="bp-channel-count">{project.openTaskCount}</span>
 								{/if}
 							</a>
 							<a
-								class={`bp-channel-item ${isProjectActive(project.slug) && currentPath.includes('/notes/') ? 'is-active' : ''}`}
+								class={`bp-channel-item ${isProjectActive(project.slug) && (currentPath.includes('/notes/') || currentHash === '#notes') ? 'is-active' : ''}`}
 								href={`/projects/${project.slug}#notes`}
 							>
-								<span class="bp-channel-icon">✎</span>
+								<span class="bp-channel-icon">n</span>
 								<span>Notes</span>
 								{#if project.noteCount > 0}
 									<span class="bp-channel-count">{project.noteCount}</span>
 								{/if}
 							</a>
 							<a
-								class={`bp-channel-item ${isProjectActive(project.slug) && currentPath.includes('/meetings/') ? 'is-active' : ''}`}
+								class={`bp-channel-item ${isProjectActive(project.slug) && (currentPath.includes('/meetings/') || currentHash === '#meetings') ? 'is-active' : ''}`}
 								href={`/projects/${project.slug}#meetings`}
 							>
-								<span class="bp-channel-icon">◎</span>
+								<span class="bp-channel-icon">m</span>
 								<span>Meetings</span>
 								{#if project.meetingCount > 0}
 									<span class="bp-channel-count">{project.meetingCount}</span>
@@ -345,7 +381,7 @@
 
 			{#if !shell.activeProjects.length}
 				<div class="bp-channel-meta">
-					<p style="padding: 0.5rem 0.6rem; color: var(--bp-faint); font-size: 0.78rem;">
+					<p class="bp-empty">
 						No active projects yet. Create one to get started.
 					</p>
 				</div>
@@ -353,12 +389,12 @@
 		</div>
 
 		<div class="bp-channels-footer">
-			<button
-				class="btn btn-primary btn-sm w-full"
-				onclick={() => openModal('project')}
-			>
-				New project
-			</button>
+			<div class="grid grid-cols-3 gap-2">
+				<button class="btn btn-ghost btn-sm" onclick={() => openModal('task')}>Task</button>
+				<button class="btn btn-ghost btn-sm" onclick={() => openModal('note')}>Note</button>
+				<button class="btn btn-ghost btn-sm" onclick={() => openModal('meeting')}>Meet</button>
+			</div>
+			<button class="btn btn-primary btn-sm w-full" onclick={() => openModal('project')}>Project</button>
 		</div>
 	</aside>
 
@@ -371,7 +407,7 @@
 					onclick={() => (mobileNavOpen = !mobileNavOpen)}
 					aria-label="Toggle navigation"
 				>
-					{mobileNavOpen ? '✕' : '☰'}
+					{mobileNavOpen ? 'Close' : 'Menu'}
 				</button>
 				{#if headerContext.sub}
 					<span class="bp-breadcrumb">{headerContext.label} /</span>
@@ -381,9 +417,10 @@
 				{/if}
 			</div>
 			<div class="bp-main-header-actions">
-				<button class="btn btn-ghost btn-sm" onclick={() => openModal('task')}>New task</button>
+				<button class="btn btn-ghost btn-sm" onclick={() => (paletteOpen = true)}>/</button>
+				<button class="btn btn-ghost btn-sm" onclick={() => openModal('task')}>Task</button>
 				<button class="btn btn-ghost btn-sm" onclick={() => openModal('meeting')}>Meeting</button>
-				<button class="btn btn-ghost btn-sm" onclick={() => openModal('note')}>Note</button>
+				<button class="btn btn-primary btn-sm" onclick={() => openModal('note')}>Note</button>
 			</div>
 		</header>
 
@@ -400,22 +437,22 @@
 {#if modal}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 z-40 bg-[rgba(7,8,12,0.76)] p-4 backdrop-blur-sm"
+		class="fixed inset-0 z-40 bg-[rgba(1,4,9,0.78)] p-4 backdrop-blur-sm"
 		role="button"
 		tabindex="0"
 		onclick={closeModal}
 		onkeydown={(event) => event.key === 'Escape' && closeModal()}
 	>
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="bp-panel mx-auto mt-8 max-w-2xl p-6" role="presentation" onclick={(event) => event.stopPropagation()}>
+		<div class="bp-panel mx-auto mt-8 max-w-2xl p-5" role="presentation" onclick={(event) => event.stopPropagation()}>
 			<div class="bp-toolbar">
 				<div>
 					<p class="bp-kicker">Quick create</p>
-					<h2 class="mt-2 text-[1.5rem] font-semibold text-white">
+					<h2 class="mt-2 text-[1.15rem] font-semibold text-white">
 						{modal === 'project' ? 'Create project' : modal === 'task' ? 'Create task' : modal === 'meeting' ? 'Create meeting' : 'Create note'}
 					</h2>
 				</div>
-				<button type="button" class="btn btn-ghost btn-sm" onclick={closeModal}>Close</button>
+				<button type="button" class="btn btn-ghost btn-sm" onclick={closeModal}>Esc</button>
 			</div>
 
 			<div class="mt-5 grid gap-4">

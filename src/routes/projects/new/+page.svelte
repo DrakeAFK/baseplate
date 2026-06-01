@@ -26,16 +26,15 @@
 </script>
 
 <div class="bp-page mx-auto max-w-4xl">
-	<section class="bp-hero p-6 md:p-7">
+	<section class="bp-hero pb-4">
 		<div>
 			<p class="bp-kicker">Create project</p>
 			<h1 class="bp-page-title">Create project</h1>
-			<p class="bp-copy">Start a new workspace with a clear title and scope.</p>
 		</div>
 	</section>
 
-	<section class="bp-panel p-6 md:p-8">
-		<div class="relative z-10 grid gap-5">
+	<section class="bp-panel p-4 md:p-5">
+		<div class="grid gap-5">
 			<label class="grid gap-2">
 				<span class="bp-meta">Title</span>
 				<input class="input input-bordered w-full" bind:value={title} placeholder="RequestBridge" />
@@ -58,7 +57,7 @@
 			{/if}
 			<div class="flex justify-end pt-2">
 				<button class="btn btn-primary" onclick={submit} disabled={saving || !title.trim()}>
-					{saving ? 'Creating…' : 'Create project'}
+					{saving ? 'Creating...' : 'Create project'}
 				</button>
 			</div>
 		</div>
