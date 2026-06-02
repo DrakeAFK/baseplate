@@ -1,36 +1,85 @@
-# Dependencies
+# =========================================================================
+# BASEPLATE .gitignore
+# =========================================================================
+# Local-first, zero-leak configuration for a public repository.
+# Keeps your workspace data, database, and environmental secrets off GitHub.
+# =========================================================================
+
+# --- Dependencies ---
 node_modules/
+.pnpm-store/
+.yarn/
 
-# Editor
-.vscode/
-
-# Local workspace state (notes + DB)
+# --- Local Workspace State (CRITICAL: NEVER COMMIT YOUR PRIVATE DATA) ---
 workspace/
 
-# Output
-.output
-.vercel
-.netlify
-.wrangler
-/.svelte-kit
-/build
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Env
+# --- Environment Secrets ---
 .env
 .env.*
 !.env.example
 !.env.test
 
-# Logs
+# --- Editor / IDE Configuration ---
+# Ignore VS Code folders except for team settings, extensions, and launch templates
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# Ignore other IDEs and temporary swap files
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# --- System & OS Trash ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.directory
+
+# --- Build & Output Artifacts ---
+/dist/
+/build/
+/.svelte-kit/
+/.output/
+/.vercel/
+/.netlify/
+/.wrangler/
+
+# --- Testing Artifacts & Cache ---
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/.auth/
+/playwright/.cache/
+
+# Vitest / Jest
+/coverage/
+/.vitest/
+
+# --- Logs ---
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Vite
+# --- Vite / Compiler Temp Files ---
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# --- SQLite Temp Files (in case of local testing databases outside workspace) ---
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
