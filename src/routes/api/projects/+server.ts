@@ -6,7 +6,8 @@ import { createProject } from '$lib/server/services/workspace';
 const schema = z.object({
 	title: z.string().trim().min(1).max(140),
 	kind: z.enum(['standard', 'perpetual']).default('standard'),
-	summary: z.string().max(500).optional().default('')
+	summary: z.string().max(500).optional().default(''),
+	repoPath: z.string().max(1000).optional().default('')
 });
 
 export const POST: RequestHandler = async ({ request }) => {

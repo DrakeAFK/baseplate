@@ -7,7 +7,8 @@ const schema = z.object({
 	title: z.string().trim().min(1).max(140).optional(),
 	summary: z.string().max(500).optional(),
 	status: z.enum(['active', 'on_hold', 'completed', 'archived']).optional(),
-	kind: z.enum(['standard', 'perpetual']).optional()
+	kind: z.enum(['standard', 'perpetual']).optional(),
+	repo_path: z.string().max(1000).optional()
 });
 
 export const PATCH: RequestHandler = async ({ request, params }) => {

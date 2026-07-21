@@ -21,6 +21,7 @@
 			<span class="bp-pill">{document.backlinks.length} backlinks</span>
 		</div>
 	</section>
+	{#if document.missing}<div class="bp-carryover-bar border-error/40"><p class="text-sm text-error">Inbox Markdown file is missing. Rebuild the workspace after restoring the file.</p></div>{/if}
 
 	<div class="bp-page-grid">
 		<div class="grid gap-4">

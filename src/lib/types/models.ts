@@ -13,14 +13,29 @@ export interface Project {
 	kind: ProjectKind;
 	status: ProjectStatus;
 	summary: string;
+	repo_path?: string;
 	sort_position: number;
 	created_at: string;
 	updated_at: string;
 	archived_at: string | null;
 }
 
+export interface RepositoryStatus {
+	path: string;
+	available: boolean;
+	isGitRepository: boolean;
+	branch: string;
+	dirtyCount: number;
+	ahead: number;
+	behind: number;
+	lastCommit: string;
+	error: string | null;
+}
+
 export interface ProjectWithCounts extends Project {
 	openTaskCount: number;
+	inProgressTaskCount: number;
+	blockedTaskCount: number;
 	noteCount: number;
 	meetingCount: number;
 }
@@ -134,6 +149,7 @@ export interface MeetingDocument {
 
 export interface ProjectDashboard {
 	project: Project;
+	repository: RepositoryStatus | null;
 	homeNote: NoteDocument | null;
 	taskGroups: Record<TaskStatus, TaskTreeItem[]>;
 	meetings: Array<Meeting & { excerpt: string; task_count: number }>;
@@ -160,12 +176,38 @@ export interface TodayTask extends Task {
 	projectSlug: string;
 }
 
+export interface InboxTriageItem {
+	lineIndex: number;
+	text: string;
+}
+
+export interface WorkbenchDashboard {
+	tasks: TodayTask[];
+	inboxItems: InboxTriageItem[];
+	projects: ProjectWithCounts[];
+	repositories: Array<{ project: Project; status: RepositoryStatus }>;
+	counts: {
+		open: number;
+		inProgress: number;
+		blocked: number;
+		overdue: number;
+		unscheduled: number;
+	};
+}
+
 export interface TodayDashboard {
 	daily: NoteDocument;
 	dailyMeta: DailyNoteMeta;
 	shortcuts: TodayShortcut[];
 	todayTasks: TodayTask[];
 	yesterdayNote: { date: string; noteId: string } | null;
+	carryover: {
+		sourceDate: string;
+		sourceNoteId: string;
+		availableCount: number;
+		importedCount: number;
+	} | null;
+	activeProjects: ProjectWithCounts[];
 }
 
 export interface NotesIndexItem {

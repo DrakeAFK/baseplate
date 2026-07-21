@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { getDb } from '$lib/server/db/connection';
 import { buildOutgoingLinks } from '$lib/markdown/extract-links';
+import { extractCarryoverItems, extractOpenChecklistItems, mergeDailyCarryover } from '$lib/markdown/carryover';
 import { renderMarkdown } from '$lib/markdown/render';
 import { resolveObjectHref } from './links';
 import type {
@@ -20,6 +22,7 @@ import type {
 	ProjectKind,
 	ProjectStatus,
 	ProjectWithCounts,
+	RepositoryStatus,
 	SearchObjectType,
 	SearchResult,
 	Task,
@@ -28,7 +31,8 @@ import type {
 	TaskTreeItem,
 	TodayShortcut,
 	TodayTask,
-	TodayDashboard
+	TodayDashboard,
+	WorkbenchDashboard
 } from '$lib/types/models';
 import { formatDate, formatRelative, nowIso, todayDate } from '$lib/utils/dates';
 import { createId } from '$lib/utils/ids';
@@ -42,14 +46,25 @@ import {
 	getProjectHomePath,
 	getProjectNotePath,
 	getProjectsDir,
+	getTaskPath,
 	getWorkspaceDir
 } from '$lib/server/workspace/paths';
 import { defaultTemplate } from '$lib/server/workspace/templates';
 
 let bootstrapped = false;
 let watcher: FSWatcher | null = null;
+const repositoryStatusCache = new Map<string, { at: number; status: RepositoryStatus }>();
 
 type Row = Record<string, string | number | null>;
+
+export class WorkspaceConflictError extends Error {
+	document: NoteDocument;
+	constructor(document: NoteDocument) {
+		super('This file changed on disk while you were editing.');
+		this.name = 'WorkspaceConflictError';
+		this.document = document;
+	}
+}
 
 function stripMarkdown(value: string): string {
 	return value.replace(/[#>*_\-\[\]`]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -145,9 +160,124 @@ function ensureWorkspaceScaffold(): void {
 }
 
 function createProjectFolders(slug: string): void {
-	for (const folder of ['notes', 'docs', 'decisions', 'meetings']) {
+	for (const folder of ['notes', 'docs', 'decisions', 'meetings', 'tasks']) {
 		fs.mkdirSync(path.join(getProjectDir(slug), folder), { recursive: true });
 	}
+}
+
+function writeProjectManifest(project: Project): void {
+	const homeNote = getDb()
+		.prepare("SELECT * FROM notes WHERE project_id = ? AND kind = 'project_home' LIMIT 1")
+		.get(project.id) as Note | undefined;
+	if (!homeNote) return;
+	const body = fileExists(homeNote.file_path)
+		? readManagedMarkdown(homeNote.file_path).body
+		: defaultTemplate('project_home', project.title);
+	writeManagedMarkdown(
+		homeNote.file_path,
+		{
+			id: homeNote.id,
+			kind: 'project_home',
+			title: project.title,
+			project: project.slug,
+			project_id: project.id,
+			project_kind: project.kind,
+			project_status: project.status,
+			project_summary: project.summary,
+			repo_path: project.repo_path ?? '',
+			sort_position: project.sort_position,
+			archived_at: project.archived_at,
+			created_at: project.created_at,
+			updated_at: project.updated_at
+		},
+		body
+	);
+}
+
+function getRepositoryStatus(project: Project): RepositoryStatus | null {
+	const repoPath = project.repo_path?.trim();
+	if (!repoPath) return null;
+	const cached = repositoryStatusCache.get(repoPath);
+	if (cached && Date.now() - cached.at < 10_000) return cached.status;
+	const base: RepositoryStatus = {
+		path: repoPath,
+		available: fs.existsSync(repoPath),
+		isGitRepository: false,
+		branch: '',
+		dirtyCount: 0,
+		ahead: 0,
+		behind: 0,
+		lastCommit: '',
+		error: null
+	};
+	if (!base.available) {
+		const status = { ...base, error: 'Path does not exist' };
+		repositoryStatusCache.set(repoPath, { at: Date.now(), status });
+		return status;
+	}
+	try {
+		const runGit = (args: string[]) =>
+			execFileSync('git', ['-C', repoPath, ...args], { encoding: 'utf8', timeout: 1500 }).trim();
+		base.isGitRepository = runGit(['rev-parse', '--is-inside-work-tree']) === 'true';
+		base.branch = runGit(['branch', '--show-current']) || 'detached';
+		base.dirtyCount = runGit(['status', '--porcelain']).split('\n').filter(Boolean).length;
+		base.lastCommit = runGit(['log', '-1', '--pretty=%h · %s · %cr']);
+		try {
+			const [behind = '0', ahead = '0'] = runGit(['rev-list', '--left-right', '--count', '@{upstream}...HEAD']).split(/\s+/);
+			base.ahead = Number(ahead) || 0;
+			base.behind = Number(behind) || 0;
+		} catch {
+			// A local-only branch without an upstream is healthy and common.
+		}
+		repositoryStatusCache.set(repoPath, { at: Date.now(), status: base });
+		return base;
+	} catch (error) {
+		const status = { ...base, error: error instanceof Error ? error.message.split('\n')[0] : 'Unable to inspect repository' };
+		repositoryStatusCache.set(repoPath, { at: Date.now(), status });
+		return status;
+	}
+}
+
+function writeTaskFile(task: Task): void {
+	const project = getProjectById(task.project_id);
+	if (!project) return;
+	writeManagedMarkdown(
+		getTaskPath(project.slug, task.id),
+		{
+			id: task.id,
+			kind: 'task',
+			title: task.title,
+			project: project.slug,
+			project_id: project.id,
+			parent_task_id: task.parent_task_id,
+			source_meeting_id: task.source_meeting_id,
+			source_note_id: task.source_note_id,
+			status: task.status,
+			priority: task.priority,
+			scheduled_for: task.scheduled_for,
+			due_at: task.due_at,
+			position: task.position,
+			completed_at: task.completed_at,
+			archived_at: task.archived_at,
+			created_at: task.created_at,
+			updated_at: task.updated_at
+		},
+		task.description_md
+	);
+}
+
+function syncTaskToSourceMarkdown(task: Task): void {
+	if (!task.source_meeting_id) return;
+	const meeting = getMeetingById(task.source_meeting_id);
+	if (!meeting) return;
+	const note = getNoteById(meeting.note_id);
+	if (!note || !fileExists(note.file_path)) return;
+	const parsed = readManagedMarkdown(note.file_path);
+	const marker = task.status === 'done' ? 'x' : ' ';
+	const linkPattern = new RegExp(`^(\\s*[-*+]\\s+\\[)[ xX](\\]\\s+)\\[\\[task\\/${task.id}(?:\\|[^\\]]*)?\\]\\]`, 'm');
+	if (!linkPattern.test(parsed.body)) return;
+	const nextBody = parsed.body.replace(linkPattern, `$1${marker}$2[[task/${task.id}|${task.title}]]`);
+	if (nextBody !== parsed.body) saveNoteContent(note.id, nextBody, { force: true });
 }
 
 function samePath(left: string, right: string | null | undefined): boolean {
@@ -219,10 +349,134 @@ export function bootstrapWorkspace(): void {
 	if (bootstrapped) return;
 	ensureWorkspaceScaffold();
 	getDb();
+	hydrateWorkspaceFromFiles();
 	seedDefaults();
+	persistCanonicalState();
 	reindexWorkspace();
 	startWatcher();
 	bootstrapped = true;
+}
+
+function listWorkspaceMarkdownFiles(directory = getWorkspaceDir()): string[] {
+	if (!fs.existsSync(directory)) return [];
+	const files: string[] = [];
+	for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+		if (entry.name === '.app' || entry.name.startsWith('.')) continue;
+		const entryPath = path.join(directory, entry.name);
+		if (entry.isDirectory()) files.push(...listWorkspaceMarkdownFiles(entryPath));
+		else if (entry.isFile() && entry.name.endsWith('.md')) files.push(entryPath);
+	}
+	return files;
+}
+
+function hydrateWorkspaceFromFiles(): void {
+	const db = getDb();
+	const files = listWorkspaceMarkdownFiles();
+
+	// Project manifests establish the ownership graph before notes and tasks are loaded.
+	for (const filePath of files.filter((candidate) => path.basename(candidate) === 'project.md')) {
+		try {
+			const parsed = readManagedMarkdown(filePath);
+			if (parsed.data.kind !== 'project_home') continue;
+			const slug = path.basename(path.dirname(filePath));
+			const existing = db.prepare('SELECT * FROM projects WHERE slug = ? OR id = ? LIMIT 1').get(slug, parsed.data.project_id ?? '') as Project | undefined;
+			const projectId = parsed.data.project_id ?? existing?.id ?? createId('prj');
+			const createdAt = parsed.data.created_at || nowIso();
+			db.prepare(
+				`INSERT INTO projects (id, slug, title, kind, status, summary, repo_path, sort_position, created_at, updated_at, archived_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, title = excluded.title,
+				 kind = excluded.kind, status = excluded.status, summary = excluded.summary,
+				 repo_path = excluded.repo_path, sort_position = excluded.sort_position, updated_at = excluded.updated_at`
+			).run(
+				projectId,
+				slug,
+				parsed.data.title || existing?.title || slug,
+				parsed.data.project_kind ?? existing?.kind ?? 'standard',
+				parsed.data.project_status ?? existing?.status ?? 'active',
+				parsed.data.project_summary ?? existing?.summary ?? '',
+				parsed.data.repo_path ?? existing?.repo_path ?? '',
+				parsed.data.sort_position ?? existing?.sort_position ?? nextProjectSortPosition('active'),
+				createdAt,
+				parsed.data.updated_at || createdAt,
+				parsed.data.archived_at ?? existing?.archived_at ?? (parsed.data.project_status === 'archived' ? parsed.data.updated_at || createdAt : null)
+			);
+			db.prepare(
+				`INSERT INTO notes (id, project_id, kind, title, file_path, excerpt, created_at, updated_at, archived_at)
+				 VALUES (?, ?, 'project_home', ?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, title = excluded.title,
+				 file_path = excluded.file_path, excerpt = excluded.excerpt, updated_at = excluded.updated_at`
+			).run(parsed.data.id, projectId, parsed.data.title || slug, filePath, excerptForBody(parsed.body), createdAt, parsed.data.updated_at || createdAt, null);
+		} catch (error) {
+			console.error('project manifest hydrate failed', filePath, error);
+		}
+	}
+
+	for (const filePath of files.filter((candidate) => path.basename(candidate) !== 'project.md')) {
+		try {
+			const parsed = readManagedMarkdown(filePath);
+			const data = parsed.data;
+			if (data.kind === 'task') {
+				const project = (data.project_id ? getProjectById(data.project_id) : null) ?? (data.project ? getProjectBySlug(data.project) : null);
+				if (!project) continue;
+				db.prepare(
+					`INSERT INTO tasks (id, project_id, parent_task_id, source_meeting_id, source_note_id, title, description_md,
+					 status, priority, scheduled_for, due_at, position, created_at, updated_at, completed_at, archived_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, parent_task_id = excluded.parent_task_id,
+					 source_meeting_id = excluded.source_meeting_id, source_note_id = excluded.source_note_id,
+					 title = excluded.title, description_md = excluded.description_md, status = excluded.status,
+					 priority = excluded.priority, scheduled_for = excluded.scheduled_for, due_at = excluded.due_at,
+					 position = excluded.position, updated_at = excluded.updated_at, completed_at = excluded.completed_at,
+					 archived_at = excluded.archived_at`
+				).run(data.id, project.id, data.parent_task_id ?? null, data.source_meeting_id ?? null, data.source_note_id ?? null,
+					data.title, parsed.body, data.status ?? 'todo', data.priority ?? 'medium', data.scheduled_for ?? null,
+					data.due_at ?? null, data.position ?? 0, data.created_at || nowIso(), data.updated_at || nowIso(),
+					data.completed_at ?? null, data.archived_at ?? null);
+				continue;
+			}
+
+			const project = data.project ? getProjectBySlug(data.project) : null;
+			const createdAt = data.created_at || nowIso();
+			db.prepare(
+				`INSERT INTO notes (id, project_id, kind, title, file_path, excerpt, created_at, updated_at, archived_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, kind = excluded.kind, title = excluded.title,
+				 file_path = excluded.file_path, excerpt = excluded.excerpt, updated_at = excluded.updated_at`
+			).run(data.id, project?.id ?? null, data.kind, data.title, filePath, excerptForBody(parsed.body), createdAt, data.updated_at || createdAt, data.archived_at ?? null);
+
+			if (data.kind === 'meeting' && project) {
+				const meetingId = data.meeting_id ?? (db.prepare('SELECT id FROM meetings WHERE note_id = ?').get(data.id) as { id: string } | undefined)?.id ?? createId('mtg');
+				db.prepare(
+					`INSERT INTO meetings (id, project_id, note_id, title, meeting_date, created_at, updated_at, archived_at)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id,
+					 note_id = excluded.note_id, title = excluded.title, meeting_date = excluded.meeting_date, updated_at = excluded.updated_at`
+				).run(meetingId, project.id, data.id, data.title, data.meeting_date ?? todayDate(), createdAt, data.updated_at || createdAt, data.archived_at ?? null);
+			}
+			if (data.kind === 'daily' && data.note_date) {
+				const dailyId = data.daily_id ?? (db.prepare('SELECT id FROM daily_notes WHERE note_id = ?').get(data.id) as { id: string } | undefined)?.id ?? createId('dly');
+				db.prepare(
+					`INSERT INTO daily_notes (id, note_id, note_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+					 ON CONFLICT(id) DO UPDATE SET note_id = excluded.note_id, note_date = excluded.note_date, updated_at = excluded.updated_at`
+				).run(dailyId, data.id, data.note_date, createdAt, data.updated_at || createdAt);
+			}
+		} catch (error) {
+			console.error('workspace file hydrate failed', filePath, error);
+		}
+	}
+}
+
+function persistCanonicalState(): void {
+	const db = getDb();
+	for (const project of db.prepare('SELECT * FROM projects').all() as Project[]) writeProjectManifest(project);
+	for (const task of db.prepare('SELECT * FROM tasks').all() as Task[]) writeTaskFile(task);
+	for (const note of db.prepare("SELECT * FROM notes WHERE kind IN ('meeting', 'daily')").all() as Note[]) {
+		if (!fileExists(note.file_path)) continue;
+		const parsed = readManagedMarkdown(note.file_path);
+		const meeting = note.kind === 'meeting' ? db.prepare('SELECT id FROM meetings WHERE note_id = ?').get(note.id) as { id: string } | undefined : undefined;
+		const daily = note.kind === 'daily' ? db.prepare('SELECT id FROM daily_notes WHERE note_id = ?').get(note.id) as { id: string } | undefined : undefined;
+		writeManagedMarkdown(note.file_path, { ...parsed.data, meeting_id: meeting?.id, daily_id: daily?.id }, parsed.body);
+	}
 }
 
 function seedDefaults(): void {
@@ -275,11 +529,27 @@ function startWatcher(): void {
 		}
 	);
 
-	watcher.on('change', (filePath) => {
+	const handleUpsert = (filePath: string) => {
 		try {
+			hydrateWorkspaceFromFiles();
 			reindexFile(filePath);
 		} catch (error) {
 			console.error('watcher change failed', error);
+		}
+	};
+	watcher.on('change', handleUpsert);
+	watcher.on('add', handleUpsert);
+	watcher.on('unlink', (filePath) => {
+		const taskId = path.basename(filePath, '.md');
+		if (taskId.startsWith('tsk_')) {
+			getDb().prepare('UPDATE tasks SET archived_at = ?, updated_at = ? WHERE id = ?').run(nowIso(), nowIso(), taskId);
+			getDb().prepare("DELETE FROM search_fts WHERE object_type = 'task' AND object_id = ?").run(taskId);
+			return;
+		}
+		const note = getDb().prepare('SELECT * FROM notes WHERE file_path = ?').get(filePath) as Note | undefined;
+		if (note) {
+			getDb().prepare('UPDATE notes SET archived_at = ?, updated_at = ? WHERE id = ?').run(nowIso(), nowIso(), note.id);
+			getDb().prepare("DELETE FROM search_fts WHERE object_type = 'note' AND object_id = ?").run(note.id);
 		}
 	});
 }
@@ -289,17 +559,19 @@ export function listActiveProjects(limit = 24): ProjectWithCounts[] {
 		.prepare(
 			`SELECT projects.*,
 			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status NOT IN ('done', 'cancelled')) AS openTaskCount,
+			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status = 'in_progress') AS inProgressTaskCount,
+			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status = 'blocked') AS blockedTaskCount,
 			        (SELECT COUNT(*) FROM notes WHERE project_id = projects.id AND archived_at IS NULL AND kind IN ('note', 'doc', 'decision')) AS noteCount,
 			        (SELECT COUNT(*) FROM meetings WHERE project_id = projects.id AND archived_at IS NULL) AS meetingCount
 			 FROM projects
-			 WHERE archived_at IS NULL AND status != 'archived'
+			 WHERE archived_at IS NULL AND status IN ('active', 'on_hold')
 			 ORDER BY ${projectStatusSortCase()}, sort_position ASC, updated_at DESC
 			 LIMIT ?`
 		)
 		.all(limit) as ProjectWithCounts[];
 }
 
-export function listProjects(filters?: { status?: ProjectStatus; q?: string }): Project[] {
+export function listProjects(filters?: { status?: ProjectStatus; q?: string }): ProjectWithCounts[] {
 	const clauses = ['1=1'];
 	const params: Array<string> = [];
 	if (filters?.status) {
@@ -314,14 +586,25 @@ export function listProjects(filters?: { status?: ProjectStatus; q?: string }): 
 		? 'sort_position ASC, updated_at DESC, title COLLATE NOCASE ASC'
 		: `${projectStatusSortCase()}, sort_position ASC, updated_at DESC`;
 	return getDb()
-		.prepare(`SELECT * FROM projects WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy}`)
-		.all(...params) as Project[];
+		.prepare(
+			`SELECT projects.*,
+			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status NOT IN ('done', 'cancelled')) AS openTaskCount,
+			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status = 'in_progress') AS inProgressTaskCount,
+			        (SELECT COUNT(*) FROM tasks WHERE project_id = projects.id AND archived_at IS NULL AND status = 'blocked') AS blockedTaskCount,
+			        (SELECT COUNT(*) FROM notes WHERE project_id = projects.id AND archived_at IS NULL AND kind IN ('note', 'doc', 'decision')) AS noteCount,
+			        (SELECT COUNT(*) FROM meetings WHERE project_id = projects.id AND archived_at IS NULL) AS meetingCount
+			 FROM projects
+			 WHERE ${clauses.join(' AND ')}
+			 ORDER BY ${orderBy}`
+		)
+		.all(...params) as ProjectWithCounts[];
 }
 
 export function createProject(input: {
 	title: string;
 	kind: ProjectKind;
 	summary?: string;
+	repoPath?: string;
 }): Project {
 	const db = getDb();
 	const existing = new Set(
@@ -335,6 +618,7 @@ export function createProject(input: {
 		kind: input.kind,
 		status: 'active',
 		summary: input.summary ?? '',
+		repo_path: input.repoPath?.trim() ?? '',
 		sort_position: nextProjectSortPosition('active'),
 		created_at: nowIso(),
 		updated_at: nowIso(),
@@ -342,7 +626,7 @@ export function createProject(input: {
 	};
 
 	db.prepare(
-		'INSERT INTO projects (id, slug, title, kind, status, summary, sort_position, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)'
+		'INSERT INTO projects (id, slug, title, kind, status, summary, repo_path, sort_position, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)'
 	).run(
 		project.id,
 		project.slug,
@@ -350,6 +634,7 @@ export function createProject(input: {
 		project.kind,
 		project.status,
 		project.summary,
+		project.repo_path,
 		project.sort_position,
 		project.created_at,
 		project.updated_at
@@ -382,25 +667,14 @@ export function createProject(input: {
 		homeNote.updated_at
 	);
 
-	writeManagedMarkdown(
-		homeNote.file_path,
-		{
-			id: homeNote.id,
-			kind: 'project_home',
-			project: project.slug,
-			title: project.title,
-			created_at: homeNote.created_at,
-			updated_at: homeNote.updated_at
-		},
-		defaultTemplate('project_home', project.title)
-	);
+	writeProjectManifest(project);
 
 	reindexFile(homeNote.file_path);
 	upsertSearchRow('project', project.id, project.title, project.summary, project.title, project.updated_at, project.slug);
 	return project;
 }
 
-export function updateProject(id: string, patch: Partial<Pick<Project, 'title' | 'summary' | 'status' | 'kind'>>): Project {
+export function updateProject(id: string, patch: Partial<Pick<Project, 'title' | 'summary' | 'status' | 'kind' | 'repo_path'>>): Project {
 	const existing = getProjectById(id);
 	if (!existing) throw new Error('Project not found');
 	const db = getDb();
@@ -415,19 +689,7 @@ export function updateProject(id: string, patch: Partial<Pick<Project, 'title' |
 		fs.renameSync(getProjectDir(existing.slug), getProjectDir(slug));
 		const notes = db.prepare('SELECT * FROM notes WHERE project_id = ?').all(id) as Note[];
 		for (const note of notes) {
-			const nextPath =
-				note.kind === 'project_home'
-					? getProjectHomePath(slug)
-					: note.kind === 'meeting'
-						? (() => {
-								const meeting = db.prepare('SELECT * FROM meetings WHERE note_id = ?').get(note.id) as Meeting;
-								return getMeetingPath(slug, meeting.meeting_date, toSlug(meeting.title));
-							})()
-						: getProjectNotePath(slug, note.kind as 'note' | 'doc' | 'decision', toSlug(patch.title === note.title ? patch.title : note.title));
-			if (note.file_path !== nextPath && fileExists(note.file_path)) {
-				fs.mkdirSync(path.dirname(nextPath), { recursive: true });
-				fs.renameSync(note.file_path, nextPath);
-			}
+			const nextPath = path.join(getProjectDir(slug), path.relative(getProjectDir(existing.slug), note.file_path));
 			db.prepare('UPDATE notes SET file_path = ? WHERE id = ?').run(nextPath, note.id);
 			if (fileExists(nextPath)) {
 				const parsed = readManagedMarkdown(nextPath);
@@ -448,6 +710,7 @@ export function updateProject(id: string, patch: Partial<Pick<Project, 'title' |
 		...existing,
 		title: patch.title ?? existing.title,
 		summary: patch.summary ?? existing.summary,
+		repo_path: patch.repo_path ?? existing.repo_path,
 		status: nextStatus,
 		kind: patch.kind ?? existing.kind,
 		slug,
@@ -457,11 +720,12 @@ export function updateProject(id: string, patch: Partial<Pick<Project, 'title' |
 	};
 
 	db.prepare(
-		'UPDATE projects SET slug = ?, title = ?, summary = ?, status = ?, kind = ?, sort_position = ?, updated_at = ?, archived_at = ? WHERE id = ?'
+		'UPDATE projects SET slug = ?, title = ?, summary = ?, repo_path = ?, status = ?, kind = ?, sort_position = ?, updated_at = ?, archived_at = ? WHERE id = ?'
 	).run(
 		updated.slug,
 		updated.title,
 		updated.summary,
+		updated.repo_path,
 		updated.status,
 		updated.kind,
 		updated.sort_position,
@@ -469,7 +733,9 @@ export function updateProject(id: string, patch: Partial<Pick<Project, 'title' |
 		updated.archived_at,
 		updated.id
 	);
-	upsertSearchRow('project', updated.id, updated.title, updated.summary, updated.title, updated.updated_at, updated.slug);
+	writeProjectManifest(updated);
+	if (updated.archived_at) db.prepare("DELETE FROM search_fts WHERE object_type = 'project' AND object_id = ?").run(updated.id);
+	else upsertSearchRow('project', updated.id, updated.title, updated.summary, updated.title, updated.updated_at, updated.slug);
 	return updated;
 }
 
@@ -492,6 +758,10 @@ export function reorderProjects(status: ProjectStatus, projectIds: string[]): vo
 	});
 
 	applyOrder(projectIds);
+	for (const projectId of projectIds) {
+		const project = getProjectById(projectId);
+		if (project) writeProjectManifest(project);
+	}
 }
 
 export function archiveProject(id: string, archived: boolean): void {
@@ -501,6 +771,12 @@ export function archiveProject(id: string, archived: boolean): void {
 	getDb()
 		.prepare('UPDATE projects SET status = ?, archived_at = ?, updated_at = ? WHERE id = ?')
 		.run(nextStatus, archived ? nowIso() : null, nowIso(), id);
+	const updated = getProjectById(id);
+	if (updated) {
+		writeProjectManifest(updated);
+		if (archived) getDb().prepare("DELETE FROM search_fts WHERE object_type = 'project' AND object_id = ?").run(id);
+		else upsertSearchRow('project', updated.id, updated.title, updated.summary, updated.title, updated.updated_at, updated.slug);
+	}
 }
 
 export function createNote(input: {
@@ -571,17 +847,29 @@ export function updateNote(id: string, patch: Partial<Pick<Note, 'title'>>): Not
 }
 
 export function archiveNote(id: string, archived: boolean): void {
-	getDb().prepare('UPDATE notes SET archived_at = ?, updated_at = ? WHERE id = ?').run(archived ? nowIso() : null, nowIso(), id);
+	const archivedAt = archived ? nowIso() : null;
+	getDb().prepare('UPDATE notes SET archived_at = ?, updated_at = ? WHERE id = ?').run(archivedAt, nowIso(), id);
+	const note = getNoteById(id);
+	if (note && fileExists(note.file_path)) {
+		const parsed = readManagedMarkdown(note.file_path);
+		writeManagedMarkdown(note.file_path, { ...parsed.data, archived_at: archivedAt, updated_at: note.updated_at }, parsed.body);
+	}
+	if (archived) getDb().prepare("DELETE FROM search_fts WHERE object_type = 'note' AND object_id = ?").run(id);
+	else if (note) reindexFile(note.file_path);
 }
 
-export function saveNoteContent(id: string, body: string): NoteDocument {
+export function saveNoteContent(id: string, body: string, options?: { baseBody?: string; force?: boolean }): NoteDocument {
 	const note = getNoteById(id);
 	if (!note) throw new Error('Note not found');
 	const parsed = fileExists(note.file_path) ? readManagedMarkdown(note.file_path) : null;
+	if (!options?.force && options?.baseBody !== undefined && parsed && parsed.body !== options.baseBody) {
+		throw new WorkspaceConflictError(getNoteDocument(id));
+	}
 	const updatedAt = nowIso();
 	writeManagedMarkdown(
 		note.file_path,
 		{
+			...(parsed?.data ?? {}),
 			id: note.id,
 			kind: note.kind,
 			project: note.project_id ? projectSlugById(note.project_id) ?? undefined : undefined,
@@ -619,6 +907,7 @@ export function createMeeting(input: { projectId: string; title: string; meeting
 		{
 			id: noteId,
 			kind: 'meeting',
+			meeting_id: meetingId,
 			project: project.slug,
 			title: input.title,
 			meeting_date: input.meetingDate,
@@ -660,13 +949,27 @@ export function updateMeeting(id: string, patch: Partial<Pick<Meeting, 'title' |
 }
 
 export function archiveMeeting(id: string, archived: boolean): void {
-	getDb().prepare('UPDATE meetings SET archived_at = ?, updated_at = ? WHERE id = ?').run(archived ? nowIso() : null, nowIso(), id);
-}
-
-export function saveMeetingContent(id: string, body: string): MeetingDocument {
 	const meeting = getMeetingById(id);
 	if (!meeting) throw new Error('Meeting not found');
-	saveNoteContent(meeting.note_id, body);
+	const archivedAt = archived ? nowIso() : null;
+	getDb().prepare('UPDATE meetings SET archived_at = ?, updated_at = ? WHERE id = ?').run(archivedAt, nowIso(), id);
+	getDb().prepare('UPDATE notes SET archived_at = ?, updated_at = ? WHERE id = ?').run(archivedAt, nowIso(), meeting.note_id);
+	const note = getNoteById(meeting.note_id);
+	if (note && fileExists(note.file_path)) {
+		const parsed = readManagedMarkdown(note.file_path);
+		writeManagedMarkdown(note.file_path, { ...parsed.data, archived_at: archivedAt, updated_at: note.updated_at }, parsed.body);
+	}
+	if (archived) {
+		getDb().prepare("DELETE FROM search_fts WHERE object_type = 'meeting' AND object_id = ?").run(id);
+		getDb().prepare("DELETE FROM search_fts WHERE object_type = 'note' AND object_id = ?").run(meeting.note_id);
+	} else if (note) reindexFile(note.file_path);
+}
+
+export function saveMeetingContent(id: string, body: string, options?: { baseBody?: string; force?: boolean }): MeetingDocument {
+	const meeting = getMeetingById(id);
+	if (!meeting) throw new Error('Meeting not found');
+	saveNoteContent(meeting.note_id, body, options);
+	extractTasksFromMeetingMarkdown(id);
 	return getMeetingDocument(id);
 }
 
@@ -683,6 +986,11 @@ export function createTask(input: {
 	sourceNoteId?: string | null;
 }): Task {
 	const db = getDb();
+	if (!getProjectById(input.projectId)) throw new Error('Project not found');
+	if (input.parentTaskId) {
+		const parent = db.prepare('SELECT * FROM tasks WHERE id = ?').get(input.parentTaskId) as Task | undefined;
+		if (!parent || parent.project_id !== input.projectId) throw new Error('Parent task must belong to the same project');
+	}
 	const existing = db
 		.prepare('SELECT COALESCE(MAX(position), -1) AS max_position FROM tasks WHERE project_id = ? AND parent_task_id IS ?')
 		.get(input.projectId, input.parentTaskId ?? null) as { max_position: number };
@@ -730,6 +1038,7 @@ export function createTask(input: {
 	);
 	replaceObjectLinks('task', task.id, task.description_md);
 	upsertTaskSearch(task);
+	writeTaskFile(task);
 	return task;
 }
 
@@ -741,6 +1050,14 @@ function upsertTaskSearch(task: Task): void {
 export function updateTask(id: string, patch: Partial<Omit<Task, 'id' | 'created_at' | 'position' | 'project_id'>>): Task {
 	const current = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task | undefined;
 	if (!current) throw new Error('Task not found');
+	if (patch.parent_task_id) {
+		let parent = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(patch.parent_task_id) as Task | undefined;
+		if (!parent || parent.project_id !== current.project_id) throw new Error('Parent task must belong to the same project');
+		while (parent) {
+			if (parent.id === id) throw new Error('A task cannot be nested beneath itself');
+			parent = parent.parent_task_id ? getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(parent.parent_task_id) as Task | undefined : undefined;
+		}
+	}
 	const status = patch.status ?? current.status;
 	const updated: Task = {
 		...current,
@@ -773,11 +1090,19 @@ export function updateTask(id: string, patch: Partial<Omit<Task, 'id' | 'created
 		);
 	replaceObjectLinks('task', id, updated.description_md);
 	upsertTaskSearch(updated);
+	writeTaskFile(updated);
+	syncTaskToSourceMarkdown(updated);
 	return updated;
 }
 
 export function archiveTask(id: string, archived: boolean): void {
 	getDb().prepare('UPDATE tasks SET archived_at = ?, updated_at = ? WHERE id = ?').run(archived ? nowIso() : null, nowIso(), id);
+	const task = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task | undefined;
+	if (task) {
+		writeTaskFile(task);
+		if (archived) getDb().prepare("DELETE FROM search_fts WHERE object_type = 'task' AND object_id = ?").run(id);
+		else upsertTaskSearch(task);
+	}
 }
 
 function buildTaskTree(tasks: Task[]): TaskTreeItem[] {
@@ -843,6 +1168,7 @@ export function getProjectDashboard(slug: string): ProjectDashboard {
 
 	return {
 		project,
+		repository: getRepositoryStatus(project),
 		homeNote: home ? getNoteDocument(home.id) : null,
 		taskGroups: groupedStatuses,
 		meetings,
@@ -950,6 +1276,26 @@ export function getNoteDocument(noteId: string): NoteDocument {
 	};
 }
 
+export function listDocumentHistory(noteId: string): Array<{ timestamp: number; createdAt: string; size: number }> {
+	if (!getNoteById(noteId)) throw new Error('Note not found');
+	const historyDir = path.join(getWorkspaceDir(), '.app', 'history', noteId);
+	if (!fs.existsSync(historyDir)) return [];
+	return fs.readdirSync(historyDir)
+		.filter((name) => /^\d+\.md$/.test(name))
+		.map((name) => {
+			const timestamp = Number(name.slice(0, -3));
+			return { timestamp, createdAt: new Date(timestamp).toISOString(), size: fs.statSync(path.join(historyDir, name)).size };
+		})
+		.sort((a, b) => b.timestamp - a.timestamp)
+		.slice(0, 40);
+}
+
+export function restoreDocumentHistory(noteId: string, timestamp: number): NoteDocument {
+	const snapshotPath = path.join(getWorkspaceDir(), '.app', 'history', noteId, `${timestamp}.md`);
+	if (!Number.isSafeInteger(timestamp) || !fileExists(snapshotPath)) throw new Error('History snapshot not found');
+	return saveNoteContent(noteId, readManagedMarkdown(snapshotPath).body, { force: true });
+}
+
 export function getMeetingDocument(meetingId: string): MeetingDocument {
 	const meeting = getMeetingById(meetingId);
 	if (!meeting) throw new Error('Meeting not found');
@@ -975,6 +1321,52 @@ export function getMeetingDocument(meetingId: string): MeetingDocument {
 export function getInboxDocument(): NoteDocument {
 	const row = getDb().prepare("SELECT id FROM notes WHERE kind = 'inbox' LIMIT 1").get() as { id: string };
 	return getNoteDocument(row.id);
+}
+
+export function captureInboxItem(text: string): NoteDocument {
+	const inbox = getInboxDocument();
+	const cleanText = text.replace(/\s+/g, ' ').trim();
+	if (!cleanText) return inbox;
+	const separator = inbox.body.trimEnd() ? '\n' : '';
+	return saveNoteContent(inbox.note.id, `${inbox.body.trimEnd()}${separator}- [ ] ${cleanText}\n`);
+}
+
+function getInboxTriageItems(): WorkbenchDashboard['inboxItems'] {
+	const inbox = getInboxDocument();
+	return inbox.body.split('\n').flatMap((line, lineIndex) => {
+		const match = line.match(/^\s*[-*+]\s+\[\s\]\s+(.+?)\s*$/i);
+		return match ? [{ lineIndex, text: match[1].trim() }] : [];
+	});
+}
+
+export function triageInboxItem(input: {
+	lineIndex: number;
+	text: string;
+	action: 'task' | 'note' | 'discard';
+	projectId?: string;
+}): { href: string | null } {
+	const inbox = getInboxDocument();
+	const lines = inbox.body.split('\n');
+	const line = lines[input.lineIndex] ?? '';
+	const match = line.match(/^\s*[-*+]\s+\[\s\]\s+(.+?)\s*$/i);
+	if (!match || match[1].trim() !== input.text.trim()) throw new Error('Inbox changed. Refresh and try again.');
+	let href: string | null = null;
+	if (input.action !== 'discard') {
+		if (!input.projectId) throw new Error('Choose a project');
+		const project = getProjectById(input.projectId);
+		if (!project) throw new Error('Project not found');
+		if (input.action === 'task') {
+			const task = createTask({ projectId: project.id, title: input.text.trim(), sourceNoteId: inbox.note.id });
+			href = `/projects/${project.slug}#task-${task.id}`;
+		} else {
+			const note = createNote({ projectId: project.id, title: input.text.trim().slice(0, 180), kind: 'note' });
+			saveNoteContent(note.id, `# ${note.title}\n\n${input.text.trim()}\n`);
+			href = `/projects/${project.slug}/notes/${note.id}`;
+		}
+	}
+	lines.splice(input.lineIndex, 1);
+	saveNoteContent(inbox.note.id, `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`);
+	return { href };
 }
 
 export function listNotesIndex(): NotesIndexItem[] {
@@ -1050,8 +1442,9 @@ export function getTodayTasks(): TodayTask[] {
 			 JOIN projects ON projects.id = tasks.project_id
 			 WHERE tasks.archived_at IS NULL
 			   AND tasks.status NOT IN ('done', 'cancelled')
-			   AND (tasks.scheduled_for = ? OR tasks.due_at = ?)
+			   AND (tasks.scheduled_for <= ? OR tasks.due_at <= ? OR tasks.status IN ('in_progress', 'blocked'))
 			 ORDER BY
+				CASE WHEN tasks.due_at < ? OR tasks.scheduled_for < ? THEN 0 ELSE 1 END,
 			 	CASE tasks.status
 			 		WHEN 'in_progress' THEN 0
 			 		WHEN 'blocked' THEN 1
@@ -1066,7 +1459,7 @@ export function getTodayTasks(): TodayTask[] {
 			 		ELSE 4
 			 	END`
 		)
-		.all(today, today) as Array<Task & { project_title: string; project_slug: string }>;
+		.all(today, today, today, today) as Array<Task & { project_title: string; project_slug: string }>;
 	return rows.map((row) => ({
 		...row,
 		projectTitle: row.project_title,
@@ -1074,8 +1467,42 @@ export function getTodayTasks(): TodayTask[] {
 	}));
 }
 
-export function getYesterdayDailyNote(): { date: string; noteId: string } | null {
-	const current = todayDate();
+export function getWorkbenchDashboard(): WorkbenchDashboard {
+	const today = todayDate();
+	const rows = getDb()
+		.prepare(
+			`SELECT tasks.*, projects.title AS project_title, projects.slug AS project_slug
+			 FROM tasks JOIN projects ON projects.id = tasks.project_id
+			 WHERE tasks.archived_at IS NULL AND tasks.status NOT IN ('done', 'cancelled')
+			   AND projects.archived_at IS NULL AND projects.status IN ('active', 'on_hold')
+			 ORDER BY
+			   CASE WHEN tasks.due_at < ? OR tasks.scheduled_for < ? THEN 0 ELSE 1 END,
+			   CASE tasks.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 ELSE 2 END,
+			   CASE tasks.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+			   CASE WHEN tasks.due_at IS NULL THEN 1 ELSE 0 END, tasks.due_at ASC, tasks.position ASC`
+		)
+		.all(today, today) as Array<Task & { project_title: string; project_slug: string }>;
+	const tasks = rows.map((row) => ({ ...row, projectTitle: row.project_title, projectSlug: row.project_slug }));
+	const projects = listActiveProjects(100);
+	return {
+		tasks,
+		inboxItems: getInboxTriageItems(),
+		projects,
+		repositories: projects.flatMap((project) => {
+			const status = getRepositoryStatus(project);
+			return status ? [{ project, status }] : [];
+		}).slice(0, 8),
+		counts: {
+			open: tasks.length,
+			inProgress: tasks.filter((task) => task.status === 'in_progress').length,
+			blocked: tasks.filter((task) => task.status === 'blocked').length,
+			overdue: tasks.filter((task) => Boolean((task.due_at && task.due_at < today) || (task.scheduled_for && task.scheduled_for < today))).length,
+			unscheduled: tasks.filter((task) => !task.due_at && !task.scheduled_for).length
+		}
+	};
+}
+
+function getPreviousDailyNote(current: string): { date: string; noteId: string } | null {
 	const prev = getDb()
 		.prepare('SELECT note_date, note_id FROM daily_notes WHERE note_date < ? ORDER BY note_date DESC LIMIT 1')
 		.get(current) as { note_date: string; note_id: string } | undefined;
@@ -1084,16 +1511,36 @@ export function getYesterdayDailyNote(): { date: string; noteId: string } | null
 	return { date: prev.note_date, noteId: prev.note_id };
 }
 
+export function getYesterdayDailyNote(): { date: string; noteId: string } | null {
+	return getPreviousDailyNote(todayDate());
+}
+
+function getCarryoverSummary(noteDate: string, body: string): TodayDashboard['carryover'] {
+	const previous = getPreviousDailyNote(noteDate);
+	if (!previous) return null;
+	const previousNote = getNoteById(previous.noteId);
+	const previousBody = previousNote && fileExists(previousNote.file_path) ? readManagedMarkdown(previousNote.file_path).body : '';
+	return {
+		sourceDate: previous.date,
+		sourceNoteId: previous.noteId,
+		availableCount: extractOpenChecklistItems(previousBody).length,
+		importedCount: extractCarryoverItems(body).length
+	};
+}
+
 export function getOrCreateTodayDashboard(): TodayDashboard {
 	const noteDate = todayDate();
 	const dailyMeta = getOrCreateDailyNoteMeta(noteDate);
+	const daily = getNoteDocument(dailyMeta.note_id);
 
 	return {
-		daily: getNoteDocument(dailyMeta.note_id),
+		daily,
 		dailyMeta,
 		shortcuts: buildTodayShortcuts(getWorkspaceSnapshot()),
 		todayTasks: getTodayTasks(),
-		yesterdayNote: getYesterdayDailyNote()
+		yesterdayNote: getYesterdayDailyNote(),
+		carryover: getCarryoverSummary(noteDate, daily.body),
+		activeProjects: listActiveProjects(100).filter((project) => project.status === 'active').slice(0, 8)
 	};
 }
 
@@ -1120,20 +1567,51 @@ function getOrCreateDailyNoteMeta(noteDate: string): DailyNoteMeta {
 		createdAt,
 		createdAt
 	);
+	const previous = getPreviousDailyNote(noteDate);
+	let initialBody = defaultTemplate('daily', noteDate);
+	if (previous) {
+		const previousNote = getNoteById(previous.noteId);
+		if (previousNote && fileExists(previousNote.file_path)) {
+			initialBody = mergeDailyCarryover(
+				initialBody,
+				extractOpenChecklistItems(readManagedMarkdown(previousNote.file_path).body),
+				previous
+			);
+		}
+	}
 	writeManagedMarkdown(
 		filePath,
 		{
 			id: noteId,
 			kind: 'daily',
+			daily_id: dailyId,
 			title: noteDate,
 			note_date: noteDate,
 			created_at: createdAt,
 			updated_at: createdAt
 		},
-		defaultTemplate('daily', noteDate)
+		initialBody
 	);
 	reindexFile(filePath);
 	return { id: dailyId, note_id: noteId, note_date: noteDate, created_at: createdAt, updated_at: createdAt };
+}
+
+export function carryOverDailyItems(noteId: string): NoteDocument {
+	const note = getNoteById(noteId);
+	if (!note || note.kind !== 'daily') throw new Error('Daily note not found');
+	const meta = getDb().prepare('SELECT * FROM daily_notes WHERE note_id = ?').get(noteId) as DailyNoteMeta | undefined;
+	if (!meta) throw new Error('Daily note metadata not found');
+	const previous = getPreviousDailyNote(meta.note_date);
+	if (!previous) return getNoteDocument(noteId);
+	const previousNote = getNoteById(previous.noteId);
+	if (!previousNote || !fileExists(previousNote.file_path)) return getNoteDocument(noteId);
+	const current = getNoteDocument(noteId);
+	const merged = mergeDailyCarryover(
+		current.body,
+		extractOpenChecklistItems(readManagedMarkdown(previousNote.file_path).body),
+		previous
+	);
+	return merged === current.body ? current : saveNoteContent(noteId, merged);
 }
 
 export function getDailyNoteDocumentByDate(noteDate: string): { daily: NoteDocument; dailyMeta: DailyNoteMeta } {
@@ -1152,28 +1630,31 @@ export function searchWorkspace(query: string, filters?: { type?: SearchObjectTy
 	if (!ftsQuery) return [];
 	let rows: Omit<SearchResult, 'href'>[];
 	try {
+		const clauses = ['search_fts MATCH ?'];
+		const params: string[] = [ftsQuery];
+		if (filters?.type && filters.type !== 'all') {
+			clauses.push('object_type = ?');
+			params.push(filters.type);
+		}
+		if (filters?.projectId) {
+			const project = getProjectById(filters.projectId);
+			if (!project) return [];
+			clauses.push('project_slug = ?');
+			params.push(project.slug);
+		}
 		rows = db
 			.prepare(
 				`SELECT *
 				 FROM search_fts
-				 WHERE search_fts MATCH ?
+				 WHERE ${clauses.join(' AND ')}
 				 ORDER BY rank, updated_at DESC
 				 LIMIT 30`
 			)
-			.all(ftsQuery) as Omit<SearchResult, 'href'>[];
+			.all(...params) as Omit<SearchResult, 'href'>[];
 	} catch {
 		return [];
 	}
-	return rows
-		.filter((row) => {
-			if (filters?.type && filters.type !== 'all' && row.object_type !== filters.type) return false;
-			if (filters?.projectId) {
-				const project = row.project_slug ? getProjectBySlug(row.project_slug) : null;
-				if (project?.id !== filters.projectId) return false;
-			}
-			return true;
-		})
-		.map((row) => ({
+	return rows.map((row) => ({
 			...row,
 			href: resolveObjectHref(row.object_type, row.object_id)
 		}));
@@ -1323,12 +1804,13 @@ export function getShellData(): AppShellData {
 	return {
 		workspaceDir: getWorkspaceDir(),
 		activeProjects: listActiveProjects(100),
-		allProjects: listActiveProjects(200),
+		allProjects: listProjects(),
 		snapshot,
-		pulseCollections: getShellPulseCollections(snapshot),
+		pulseCollections: [],
 		recentItems: recent,
 		commandPaletteItems: [
 			{ id: 'go-today', group: 'Navigate', label: 'Go to Today', href: '/today', action: null },
+			{ id: 'go-work', group: 'Navigate', label: 'Go to Workbench', href: '/work', action: null },
 			{ id: 'go-projects', group: 'Navigate', label: 'Go to Projects', href: '/projects', action: null },
 			{ id: 'go-notes', group: 'Navigate', label: 'Go to Notes', href: '/notes', action: null },
 			{ id: 'go-search', group: 'Navigate', label: 'Go to Search', href: '/search', action: null },
@@ -1346,6 +1828,57 @@ export function getShellData(): AppShellData {
 			}))
 		]
 	};
+}
+
+export function getWorkspaceHealth(): {
+	databaseStatus: string;
+	missingFiles: number;
+	canonicalTaskFiles: number;
+	historySnapshots: number;
+} {
+	const db = getDb();
+	const integrity = (db.pragma('integrity_check', { simple: true }) as string) || 'unknown';
+	const notes = db.prepare('SELECT file_path FROM notes WHERE archived_at IS NULL').all() as Array<{ file_path: string }>;
+	const missingFiles = notes.filter((note) => !fileExists(note.file_path)).length;
+	const canonicalTaskFiles = listWorkspaceMarkdownFiles().filter((filePath) => path.basename(path.dirname(filePath)) === 'tasks').length;
+	const historyRoot = path.join(getWorkspaceDir(), '.app', 'history');
+	const historySnapshots = fs.existsSync(historyRoot)
+		? fs.readdirSync(historyRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory())
+			.reduce((sum, entry) => sum + fs.readdirSync(path.join(historyRoot, entry.name)).length, 0)
+		: 0;
+	return {
+		databaseStatus: integrity === 'ok' && missingFiles === 0 ? 'Healthy · filesystem and index agree' : `Attention required · ${integrity}`,
+		missingFiles,
+		canonicalTaskFiles,
+		historySnapshots
+	};
+}
+
+export function listArchivedItems(): Array<{ id: string; type: 'task' | 'note' | 'meeting'; title: string; context: string; restoreUrl: string }> {
+	const db = getDb();
+	const tasks = db.prepare(
+		`SELECT tasks.id, tasks.title, projects.title AS context FROM tasks JOIN projects ON projects.id = tasks.project_id
+		 WHERE tasks.archived_at IS NOT NULL ORDER BY tasks.archived_at DESC LIMIT 30`
+	).all() as Array<{ id: string; title: string; context: string }>;
+	const meetings = db.prepare(
+		`SELECT meetings.id, meetings.title, projects.title AS context FROM meetings JOIN projects ON projects.id = meetings.project_id
+		 WHERE meetings.archived_at IS NOT NULL ORDER BY meetings.archived_at DESC LIMIT 30`
+	).all() as Array<{ id: string; title: string; context: string }>;
+	const notes = db.prepare(
+		`SELECT notes.id, notes.title, COALESCE(projects.title, 'Workspace') AS context FROM notes LEFT JOIN projects ON projects.id = notes.project_id
+		 WHERE notes.archived_at IS NOT NULL AND notes.kind != 'meeting' ORDER BY notes.archived_at DESC LIMIT 30`
+	).all() as Array<{ id: string; title: string; context: string }>;
+	return [
+		...tasks.map((item) => ({ ...item, type: 'task' as const, restoreUrl: `/api/tasks/${item.id}/restore` })),
+		...meetings.map((item) => ({ ...item, type: 'meeting' as const, restoreUrl: `/api/meetings/${item.id}/restore` })),
+		...notes.map((item) => ({ ...item, type: 'note' as const, restoreUrl: `/api/notes/${item.id}/restore` }))
+	].slice(0, 50);
+}
+
+export function rebuildWorkspaceFromFiles(): void {
+	hydrateWorkspaceFromFiles();
+	persistCanonicalState();
+	reindexWorkspace();
 }
 
 export function reindexFile(filePath: string): void {
@@ -1408,14 +1941,14 @@ export function reindexWorkspace(): void {
 	const db = getDb();
 	db.prepare('DELETE FROM object_links').run();
 	db.prepare('DELETE FROM search_fts').run();
-	for (const project of db.prepare('SELECT * FROM projects').all() as Project[]) {
+	for (const project of db.prepare('SELECT * FROM projects WHERE archived_at IS NULL').all() as Project[]) {
 		upsertSearchRow('project', project.id, project.title, project.summary, project.title, project.updated_at, project.slug);
 	}
-	for (const task of db.prepare('SELECT * FROM tasks').all() as Task[]) {
+	for (const task of db.prepare('SELECT * FROM tasks WHERE archived_at IS NULL').all() as Task[]) {
 		replaceObjectLinks('task', task.id, task.description_md);
 		upsertTaskSearch(task);
 	}
-	for (const note of db.prepare('SELECT * FROM notes').all() as Note[]) {
+	for (const note of db.prepare('SELECT * FROM notes WHERE archived_at IS NULL').all() as Note[]) {
 		if (fileExists(note.file_path)) {
 			reindexFile(note.file_path);
 		}
@@ -1425,21 +1958,40 @@ export function reindexWorkspace(): void {
 export function extractTasksFromMeetingMarkdown(meetingId: string): Task[] {
 	const meeting = getMeetingDocument(meetingId);
 	const created: Task[] = [];
-	for (const line of meeting.body.split('\n')) {
-		const match = line.match(/^\s*-\s+\[\s?\]\s+(.+)$/);
+	const lines = meeting.body.split('\n');
+	let changed = false;
+	for (const [index, line] of lines.entries()) {
+		const match = line.match(/^(\s*[-*+]\s+\[)([ xX])(\]\s+)(.+)$/);
 		if (!match) continue;
-		const title = match[1].trim();
+		const linked = match[4].match(/^\[\[task\/(tsk_[a-f0-9]{24})(?:\|([^\]]+))?\]\]$/);
+		if (linked) {
+			const task = getDb().prepare('SELECT * FROM tasks WHERE id = ?').get(linked[1]) as Task | undefined;
+			if (task) {
+				const status = match[2].toLowerCase() === 'x' ? 'done' : task.status === 'done' ? 'todo' : task.status;
+				const title = linked[2]?.trim() || task.title;
+				if (status !== task.status || title !== task.title) updateTask(task.id, { status, title });
+			}
+			continue;
+		}
+		if (match[2].toLowerCase() === 'x') continue;
+		const title = match[4].trim();
 		const exists = getDb()
 			.prepare('SELECT id FROM tasks WHERE source_meeting_id = ? AND title = ?')
 			.get(meetingId, title) as { id: string } | undefined;
-		if (exists) continue;
-		created.push(
-			createTask({
+		if (exists) {
+			lines[index] = `${match[1]} ${match[3]}[[task/${exists.id}|${title}]]`;
+			changed = true;
+			continue;
+		}
+		const task = createTask({
 				projectId: meeting.project.id,
 				title,
 				sourceMeetingId: meetingId
-			})
-		);
+			});
+		created.push(task);
+		lines[index] = `${match[1]} ${match[3]}[[task/${task.id}|${title}]]`;
+		changed = true;
 	}
+	if (changed) saveNoteContent(meeting.note.id, `${lines.join('\n').trimEnd()}\n`, { force: true });
 	return created;
 }

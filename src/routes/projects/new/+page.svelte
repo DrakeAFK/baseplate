@@ -4,6 +4,7 @@
 	let title = $state('');
 	let kind = $state<'standard' | 'perpetual'>('standard');
 	let summary = $state('');
+	let repoPath = $state('');
 	let error = $state('');
 	let saving = $state(false);
 
@@ -13,7 +14,7 @@
 		const response = await fetch('/api/projects', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ title, kind, summary })
+			body: JSON.stringify({ title, kind, summary, repoPath })
 		});
 		const payload = await response.json();
 		saving = false;
@@ -47,10 +48,14 @@
 						<option value="perpetual">Perpetual</option>
 					</select>
 				</label>
-				<label class="grid gap-2">
-					<span class="bp-meta">Summary</span>
+		<label class="grid gap-2">
+			<span class="bp-meta">Summary</span>
 					<textarea class="textarea textarea-bordered min-h-32" bind:value={summary} placeholder="Scope, owner, and current direction"></textarea>
-				</label>
+		</label>
+		<label class="grid gap-2">
+			<span class="bp-meta">Local repository path (optional)</span>
+			<input class="input input-bordered font-mono" bind:value={repoPath} placeholder="/absolute/path/to/repository" />
+		</label>
 			</div>
 			{#if error}
 				<p class="text-sm text-error">{error}</p>

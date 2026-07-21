@@ -34,6 +34,10 @@ export function getProjectHomePath(slug: string): string {
 	return path.join(getProjectDir(slug), 'project.md');
 }
 
+export function getTaskPath(slug: string, taskId: string): string {
+	return path.join(getProjectDir(slug), 'tasks', `${taskId}.md`);
+}
+
 export function getProjectNotePath(slug: string, kind: 'note' | 'doc' | 'decision', noteSlug: string): string {
 	const folder = kind === 'note' ? 'notes' : kind === 'doc' ? 'docs' : 'decisions';
 	return path.join(getProjectDir(slug), folder, `${noteSlug}.md`);

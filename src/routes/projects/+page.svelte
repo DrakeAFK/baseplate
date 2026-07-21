@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import type { Project, ProjectStatus } from '$lib/types/models';
+	import type { ProjectStatus, ProjectWithCounts } from '$lib/types/models';
 	import { formatRelative } from '$lib/utils/dates';
 	import { moveItem, sortProjects, type ProjectSortMode } from '$lib/utils/projects';
 	import { untrack } from 'svelte';
@@ -9,7 +9,7 @@
 	let { data }: { data: PageData } = $props();
 	const statuses: ProjectStatus[] = ['active', 'on_hold', 'completed', 'archived'];
 
-	let projects = $state<Project[]>(untrack(() => data.projects));
+	let projects = $state<ProjectWithCounts[]>(untrack(() => data.projects));
 	let sortMode = $state<ProjectSortMode>('manual');
 	let dragProjectId = $state<string | null>(null);
 	let dropProjectId = $state<string | null>(null);
@@ -29,7 +29,7 @@
 		return index >= 0 && nextIndex >= 0 && nextIndex < projects.length;
 	}
 
-	async function persistOrder(nextProjects: Project[]): Promise<void> {
+	async function persistOrder(nextProjects: ProjectWithCounts[]): Promise<void> {
 		const previousProjects = projects;
 		projects = nextProjects;
 		savingOrder = true;
@@ -173,8 +173,9 @@
 			<table class="bp-data-table">
 				<thead>
 					<tr>
-						<th class="w-[44%]">Project</th>
-						<th>State</th>
+						<th class="w-[34%]">Project</th>
+						<th>Execution</th>
+						<th>Context</th>
 						<th>Updated</th>
 						<th class="w-[12rem] text-right">Order</th>
 					</tr>
@@ -204,9 +205,18 @@
 							</td>
 							<td>
 								<div class="flex flex-wrap gap-2">
-									<span class="badge badge-outline">{project.kind}</span>
-									<span class="badge badge-ghost">{project.status.replace('_', ' ')}</span>
+									<span class="bp-count">{project.openTaskCount} open</span>
+									{#if project.inProgressTaskCount > 0}
+										<span class="bp-count is-moving">{project.inProgressTaskCount} moving</span>
+									{/if}
+									{#if project.blockedTaskCount > 0}
+										<span class="bp-count is-danger">{project.blockedTaskCount} blocked</span>
+									{/if}
 								</div>
+							</td>
+							<td>
+								<p class="text-sm text-base-content/70">{project.noteCount} notes <span class="bp-faint">/</span> {project.meetingCount} meetings</p>
+								<p class="bp-meta mt-1">{project.kind} / {project.status.replace('_', ' ')}</p>
 							</td>
 							<td>
 								<p class="bp-meta">{formatRelative(project.updated_at)}</p>

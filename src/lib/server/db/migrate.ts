@@ -45,6 +45,7 @@ export function migrate(db: Database.Database): void {
 			kind TEXT NOT NULL CHECK (kind IN ('standard', 'perpetual')),
 			status TEXT NOT NULL CHECK (status IN ('active', 'on_hold', 'completed', 'archived')),
 			summary TEXT NOT NULL DEFAULT '',
+			repo_path TEXT NOT NULL DEFAULT '',
 			sort_position INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
@@ -162,5 +163,9 @@ export function migrate(db: Database.Database): void {
 	if (!columnExists(db, 'projects', 'sort_position')) {
 		db.exec("ALTER TABLE projects ADD COLUMN sort_position INTEGER NOT NULL DEFAULT 0");
 		backfillProjectSortPositions(db);
+	}
+
+	if (!columnExists(db, 'projects', 'repo_path')) {
+		db.exec("ALTER TABLE projects ADD COLUMN repo_path TEXT NOT NULL DEFAULT ''");
 	}
 }

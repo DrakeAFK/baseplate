@@ -8,11 +8,13 @@ Baseplate combines flat markdown files with a highly optimized local SQLite data
 
 ## Architecture  
 
-* **Files are truth**: Notes, meetings, daily logs, and task lists exist as flat Markdown files in `workspace/`  
+* **Files are truth**: Projects, tasks, notes, meetings, and daily logs have canonical Markdown/YAML representations in `workspace/`
 * **DB is cache**: A local SQLite database (`workspace/.app/app.db`) indexes files for sub-millisecond relational queries and search  
 * **Bi-directional sync**:  
   - Writes from the UI update the filesystem and SQLite simultaneously  
-  - Disk edits (via Vim, VSCode, etc.) are detected in real-time by a `chokidar` filesystem watcher, which parses changed files and updates SQLite  
+  - Disk additions, edits, and deletions (via Vim, VSCode, etc.) are detected in real time and reconciled into SQLite
+  - The SQLite index can be rebuilt from canonical files from Settings
+* **Durable writes**: Markdown is written through atomic file replacement, disk conflicts are surfaced in the editor, and bounded local history snapshots are retained
 * **Database tuning**: Runs in WAL mode with normal sync and memory-based temp stores:  
   ```sql
   PRAGMA journal_mode = WAL;
@@ -26,10 +28,12 @@ Baseplate combines flat markdown files with a highly optimized local SQLite data
 ## Mechanics  
 
 * **Prefix-based IDs**: Every record uses Stripe-style prefixed identifiers (`prj_` for projects, `tsk_` for tasks, `nte_` for notes, `mtg_` for meetings, `dly_` for daily logs)  
-* **Automatic Task Extraction**: The sync engine parses standard markdown checkboxes (`- [ ] Task title`) inside meeting notes and converts them into relational tasks mapped back to the source meeting  
+* **Linked Task Extraction**: Meeting checkboxes become stable linked tasks; status changes synchronize back into their originating Markdown
 * **Wiki-links & Backlinks**: Support for `[[type/id]]` wiki-links, resolving them dynamically and indexing relations in an `object_links` table to build a bidirectional backlink graph  
 * **FTS5 Search**: Lightning-fast, network-free search powered by SQLite’s virtual tables  
 * **Command Palette**: `Ctrl+K` for fast keyboard navigation and entity creation
+* **Workbench**: A global execution surface for active work, attention, next actions, quick capture, inbox triage, and repository resume context
+* **Repository Context**: Projects can attach a local Git repository and expose branch, dirty state, upstream distance, and the latest commit
 
 ---
 
@@ -39,6 +43,7 @@ Baseplate combines flat markdown files with a highly optimized local SQLite data
 workspace/
   .app/app.db         ← SQLite index cache & search virtual table
   projects/<slug>/    ← Project home + raw notes, docs, and decisions
+    tasks/<task-id>.md ← Canonical task records
   daily/<year>/       ← Daily scratchpads and scheduled tasks
   inbox/inbox.md      ← Quick capture file
 ```
@@ -80,3 +85,5 @@ npm run test:e2e   # Playwright
 
 ## Privacy  
 Your files and SQLite databases live strictly inside `workspace/`, which is ignored by `.gitignore`. Nothing leaves your machine  
+
+The Docker Compose configuration binds to `127.0.0.1` by default so mutating workspace APIs are not exposed to the local network.

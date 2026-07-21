@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import MarkdownEditor from '$lib/components/editor/MarkdownEditor.svelte';
 	import { formatDate, formatRelative } from '$lib/utils/dates';
 	import { untrack } from 'svelte';
@@ -57,6 +57,13 @@
 			meetingDate = payload.meeting.meeting_date;
 		}
 	}
+
+	async function archiveMeeting(): Promise<void> {
+		if (!confirm(`Archive “${document.meeting.title}”?`)) return;
+		const response = await fetch(`/api/meetings/${document.meeting.id}/archive`, { method: 'POST' });
+		if (!response.ok) { error = 'Unable to archive meeting'; return; }
+		await goto(`/projects/${document.project.slug}`);
+	}
 </script>
 
 <div class="bp-page">
@@ -76,12 +83,14 @@
 				</button>
 				<button class="btn btn-sm btn-ghost" onclick={extractTasks}>Extract tasks</button>
 				<a class="btn btn-sm btn-ghost" href={`/projects/${document.project.slug}`}>Back to dashboard</a>
+				<button class="btn btn-sm btn-ghost text-error" onclick={archiveMeeting}>Archive</button>
 			</div>
 		</div>
 		{#if error}
 			<p class="mt-4 text-sm text-error">{error}</p>
 		{/if}
 	</section>
+	{#if document.missing}<div class="bp-carryover-bar border-error/40"><p class="text-sm text-error">The canonical meeting file is missing. The database record has been preserved for recovery.</p></div>{/if}
 
 	<MarkdownEditor
 		value={document.body}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -17,7 +18,13 @@
 		}
 		reindexState = 'success';
 		lastReindexedAt = new Date().toLocaleString();
-		reindexMessage = 'Workspace reindexed. Search and backlinks were rebuilt.';
+		reindexMessage = 'Workspace rebuilt from canonical files. Search and backlinks were refreshed.';
+	}
+
+	async function restore(url: string): Promise<void> {
+		const response = await fetch(url, { method: 'POST' });
+		if (!response.ok) { reindexState = 'error'; reindexMessage = 'Restore failed.'; return; }
+		await invalidateAll();
 	}
 </script>
 
@@ -59,6 +66,11 @@
 					<p class="bp-meta">Database status</p>
 					<p class="mt-2 text-white">{data.databaseStatus}</p>
 				</div>
+				<div class="grid gap-3 sm:grid-cols-3">
+					<div class="bp-panel-soft p-3"><p class="bp-meta">Missing files</p><p class="mt-2 font-mono text-lg text-white">{data.missingFiles}</p></div>
+					<div class="bp-panel-soft p-3"><p class="bp-meta">Task files</p><p class="mt-2 font-mono text-lg text-white">{data.canonicalTaskFiles}</p></div>
+					<div class="bp-panel-soft p-3"><p class="bp-meta">History</p><p class="mt-2 font-mono text-lg text-white">{data.historySnapshots}</p></div>
+				</div>
 				<div>
 					<p class="bp-meta">App info</p>
 					<p class="mt-2 text-white">{data.appInfo}</p>
@@ -71,7 +83,7 @@
 				<h2 class="bp-section-title">Search maintenance</h2>
 				<div class="mt-4 grid gap-3">
 					<button class="btn btn-primary" onclick={reindex} disabled={reindexState === 'working'}>
-						{reindexState === 'working' ? 'Reindexing...' : 'Reindex workspace'}
+						{reindexState === 'working' ? 'Rebuilding...' : 'Rebuild from files'}
 					</button>
 					{#if reindexMessage}
 						<p class={`text-sm ${reindexState === 'error' ? 'text-error' : 'text-success'}`}>{reindexMessage}</p>
@@ -82,5 +94,27 @@
 				</div>
 			</div>
 		</section>
+		<section class="bp-panel p-4 lg:col-span-2">
+			<h2 class="bp-section-title">Keyboard</h2>
+			<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+				<p class="text-sm text-base-content/70"><kbd class="kbd">Ctrl K</kbd> command palette</p>
+				<p class="text-sm text-base-content/70"><kbd class="kbd">G W</kbd> Workbench</p>
+				<p class="text-sm text-base-content/70"><kbd class="kbd">G T</kbd> Today</p>
+				<p class="text-sm text-base-content/70"><kbd class="kbd">T</kbd> create task</p>
+			</div>
+		</section>
+		{#if data.archivedItems.length}
+			<details class="bp-panel p-4 lg:col-span-2">
+				<summary class="cursor-pointer font-semibold text-white">Recovery bin ({data.archivedItems.length})</summary>
+				<div class="bp-list mt-4">
+					{#each data.archivedItems as item (item.id)}
+						<div class="bp-list-row flex items-center justify-between gap-3">
+							<div class="min-w-0"><p class="truncate text-sm text-white">{item.title}</p><p class="bp-meta mt-1">{item.type} / {item.context}</p></div>
+							<button class="btn btn-ghost btn-xs" onclick={() => restore(item.restoreUrl)}>Restore</button>
+						</div>
+					{/each}
+				</div>
+			</details>
+		{/if}
 	</div>
 </div>

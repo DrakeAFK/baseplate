@@ -6,7 +6,7 @@ function compareTitle(a: Project, b: Project): number {
 	return a.title.localeCompare(b.title, 'en-US', { sensitivity: 'base' });
 }
 
-export function sortProjects(projects: Project[], mode: ProjectSortMode): Project[] {
+export function sortProjects<T extends Project>(projects: T[], mode: ProjectSortMode): T[] {
 	if (mode === 'manual') {
 		return [...projects];
 	}

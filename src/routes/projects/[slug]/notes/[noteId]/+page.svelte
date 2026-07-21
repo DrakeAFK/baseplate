@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto, invalidateAll } from '$app/navigation';
 	import MarkdownEditor from '$lib/components/editor/MarkdownEditor.svelte';
 	import { formatRelative } from '$lib/utils/dates';
 	import { untrack } from 'svelte';
@@ -42,6 +43,22 @@
 			title = payload.note.title;
 		}
 	}
+
+	async function archiveNote(): Promise<void> {
+		if (!document.project || !confirm(`Archive “${document.note.title}”?`)) return;
+		const response = await fetch(`/api/notes/${document.note.id}/archive`, { method: 'POST' });
+		if (!response.ok) { error = 'Unable to archive note'; return; }
+		await goto(`/projects/${document.project.slug}`);
+	}
+
+	async function restoreSnapshot(timestamp: number): Promise<void> {
+		if (!confirm('Restore this snapshot? The current version will remain in history.')) return;
+		const response = await fetch(`/api/notes/${document.note.id}/history`, {
+			method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timestamp })
+		});
+		if (!response.ok) { error = 'Unable to restore snapshot'; return; }
+		await invalidateAll();
+	}
 </script>
 
 <div class="bp-page">
@@ -58,6 +75,7 @@
 				</button>
 				{#if document.project}
 					<a class="btn btn-ghost btn-sm" href={`/projects/${document.project.slug}`}>{backLabel}</a>
+					{#if document.note.kind !== 'project_home'}<button class="btn btn-ghost btn-sm text-error" onclick={archiveNote}>Archive</button>{/if}
 				{/if}
 			</div>
 		</div>
@@ -65,6 +83,7 @@
 			<p class="mt-4 text-sm text-error">{error}</p>
 		{/if}
 	</section>
+	{#if document.missing}<div class="bp-carryover-bar border-error/40"><p class="text-sm text-error">The canonical Markdown file is missing. Restore it from history or rebuild the workspace after replacing the file.</p></div>{/if}
 
 	<div class="bp-page-grid">
 		<MarkdownEditor
@@ -80,6 +99,19 @@
 			}}
 		/>
 
+		<div class="grid content-start gap-4">
+		<details class="bp-panel p-4">
+			<summary class="cursor-pointer font-semibold text-white">History ({data.history.length})</summary>
+			<div class="bp-list mt-4">
+				{#each data.history.slice(0, 12) as snapshot}
+					<div class="bp-list-row flex items-center justify-between gap-3">
+						<div><p class="text-sm text-white">{new Date(snapshot.createdAt).toLocaleString()}</p><p class="bp-meta mt-1">{Math.ceil(snapshot.size / 1024)} KB</p></div>
+						<button class="btn btn-ghost btn-xs" onclick={() => restoreSnapshot(snapshot.timestamp)}>Restore</button>
+					</div>
+				{/each}
+				{#if !data.history.length}<p class="bp-empty">History appears after the first saved change.</p>{/if}
+			</div>
+		</details>
 		<section class="bp-panel p-4">
 			<h2 class="bp-section-title">Backlinks</h2>
 			<div class="bp-list mt-4">
@@ -98,5 +130,6 @@
 				{/if}
 			</div>
 		</section>
+		</div>
 	</div>
 </div>

@@ -12,6 +12,7 @@
 	let dashboard = $state(untrack(() => data));
 	let projectTitle = $state(untrack(() => data.project.title));
 	let projectSummary = $state(untrack(() => data.project.summary));
+	let repoPath = $state(untrack(() => data.project.repo_path ?? ''));
 	let projectKind = $state<ProjectKind>(untrack(() => data.project.kind));
 	let projectStatus = $state<ProjectStatus>(untrack(() => data.project.status));
 	let projectSaving = $state(false);
@@ -96,6 +97,7 @@
 		dashboard = data;
 		projectTitle = data.project.title;
 		projectSummary = data.project.summary;
+		repoPath = data.project.repo_path ?? '';
 		projectKind = data.project.kind;
 		projectStatus = data.project.status;
 	});
@@ -109,6 +111,7 @@
 			body: JSON.stringify({
 				title: projectTitle,
 				summary: projectSummary,
+				repo_path: repoPath,
 				kind: projectKind,
 				status: projectStatus
 			})
@@ -180,6 +183,10 @@
 					<span class="bp-meta">Brief</span>
 					<textarea class="textarea textarea-bordered min-h-20 w-full" bind:value={projectSummary} placeholder="Scope, owner, current direction"></textarea>
 				</label>
+				<label class="grid gap-2">
+					<span class="bp-meta">Repository</span>
+					<input class="input input-bordered w-full font-mono text-sm" bind:value={repoPath} placeholder="/absolute/path/to/repository" />
+				</label>
 			</div>
 
 			<div class="grid gap-3">
@@ -229,6 +236,26 @@
 					<span class="bp-pill">{completedTasks} done</span>
 					<span class="bp-pill">{dashboard.backlinks.length} backlinks</span>
 				</div>
+				{#if dashboard.repository}
+					<div class="bp-repo-status" class:has-attention={Boolean(dashboard.repository.error)}>
+						<div class="min-w-0">
+							<p class="truncate font-mono text-sm text-white">{dashboard.repository.path}</p>
+							{#if dashboard.repository.error}
+								<p class="mt-1 text-xs text-error">{dashboard.repository.error}</p>
+							{:else}
+								<p class="bp-meta mt-1 normal-case">{dashboard.repository.lastCommit}</p>
+							{/if}
+						</div>
+						{#if dashboard.repository.isGitRepository}
+							<div class="flex flex-wrap justify-end gap-2">
+								<span class="bp-count is-moving">{dashboard.repository.branch}</span>
+								<span class="bp-count" class:is-danger={dashboard.repository.dirtyCount > 0}>{dashboard.repository.dirtyCount} changed</span>
+								{#if dashboard.repository.ahead > 0}<span class="bp-count">↑ {dashboard.repository.ahead}</span>{/if}
+								{#if dashboard.repository.behind > 0}<span class="bp-count is-danger">↓ {dashboard.repository.behind}</span>{/if}
+							</div>
+						{/if}
+					</div>
+				{/if}
 				{#if projectError}
 					<p class="text-sm text-error">{projectError}</p>
 				{/if}

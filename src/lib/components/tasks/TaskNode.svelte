@@ -115,6 +115,13 @@
 		saveState = 'idle';
 		await invalidateAll();
 	}
+
+	async function archive(): Promise<void> {
+		if (!confirm(`Archive “${item.title}”?`)) return;
+		const response = await fetch(`/api/tasks/${item.id}/archive`, { method: 'POST' });
+		if (!response.ok) { saveState = 'error'; return; }
+		await invalidateAll();
+	}
 </script>
 
 <article
@@ -214,6 +221,7 @@
 					placeholder="Acceptance criteria, blockers, context, links"
 				></textarea>
 			</label>
+			<div class="flex justify-end"><button class="btn btn-ghost btn-xs text-error" onclick={archive}>Archive task</button></div>
 
 			{#if subtaskComposerOpen}
 				<TaskComposer

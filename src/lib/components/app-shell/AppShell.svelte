@@ -5,6 +5,7 @@
 	import Logo from '$lib/assets/baseplate.svg';
 	import { todayDate } from '$lib/utils/dates';
 	import { slide } from 'svelte/transition';
+	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import type { AppShellData, TaskPriority, TaskStatus, Project } from '$lib/types/models';
 
@@ -19,15 +20,19 @@
 
 	/* ── Collapsed state per project ── */
 	let collapsed = $state<Record<string, boolean>>({});
+	let keyPrefix = '';
+	let keyPrefixTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function toggleProject(id: string): void {
 		collapsed[id] = !collapsed[id];
+		localStorage.setItem('baseplate:collapsed-projects', JSON.stringify(collapsed));
 	}
 
 	/* ── Form state (reused from original) ── */
 	let projectTitle = $state('');
 	let projectKind = $state<'standard' | 'perpetual'>('standard');
 	let projectSummary = $state('');
+	let projectRepoPath = $state('');
 
 	let selectedProjectId = $state('');
 	let taskTitle = $state('');
@@ -43,6 +48,7 @@
 
 	/* ── Nav helpers ── */
 	const railItems = [
+		{ href: '/work', icon: 'W', label: 'Workbench' },
 		{ href: '/today', icon: 'T', label: 'Today' },
 		{ href: '/projects', icon: 'P', label: 'Projects' },
 		{ href: '/search', icon: '/', label: 'Search' },
@@ -84,13 +90,15 @@
 	/* ── Project context for forms ── */
 	function currentProjectId(): string {
 		const slug = currentPath.startsWith('/projects/') ? currentPath.split('/')[2] : null;
-		return shell.allProjects.find((p: Project) => p.slug === slug)?.id ?? shell.allProjects[0]?.id ?? '';
+		const current = shell.allProjects.find((p: Project) => p.slug === slug && p.status !== 'archived' && p.status !== 'completed');
+		return current?.id ?? shell.activeProjects[0]?.id ?? '';
 	}
 
 	function resetProjectForm(): void {
 		projectTitle = '';
 		projectKind = 'standard';
 		projectSummary = '';
+		projectRepoPath = '';
 	}
 	function resetTaskForm(): void {
 		selectedProjectId = currentProjectId();
@@ -126,11 +134,18 @@
 		modal = next;
 	}
 
-	function openAction(action: string): void {
+	async function captureFromPalette(text: string): Promise<void> {
+		await fetch('/api/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+		await invalidateAll();
+	}
+
+	function openAction(action: string, payload?: Record<string, string>): void {
 		if (action === 'openCreateProject') openModal('project');
 		if (action === 'openCreateTask') openModal('task');
 		if (action === 'openCreateMeeting') openModal('meeting');
 		if (action === 'openCreateNote') openModal('note');
+		if (action === 'quickCreateTask') { openModal('task'); taskTitle = payload?.title ?? ''; }
+		if (action === 'captureInbox' && payload?.text) void captureFromPalette(payload.text);
 	}
 
 	$effect(() => {
@@ -148,7 +163,7 @@
 		const response = await fetch('/api/projects', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ title: projectTitle, kind: projectKind, summary: projectSummary })
+			body: JSON.stringify({ title: projectTitle, kind: projectKind, summary: projectSummary, repoPath: projectRepoPath })
 		});
 		const payload = await response.json();
 		if (!response.ok) { error = payload.error ?? 'Unable to create project'; return; }
@@ -210,12 +225,40 @@
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
 			event.preventDefault();
 			paletteOpen = !paletteOpen;
+			return;
 		}
 		if (event.key === 'Escape') {
 			paletteOpen = false;
 			closeModal();
 		}
+		const target = event.target as HTMLElement | null;
+		if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+		if (keyPrefix === 'g') {
+			const destinations: Record<string, string> = { w: '/work', t: '/today', p: '/projects', i: '/inbox', n: '/notes' };
+			const destination = destinations[event.key.toLowerCase()];
+			keyPrefix = '';
+			if (destination) { event.preventDefault(); void goto(destination); }
+			return;
+		}
+		if (event.key.toLowerCase() === 'g') {
+			keyPrefix = 'g';
+			if (keyPrefixTimer) clearTimeout(keyPrefixTimer);
+			keyPrefixTimer = setTimeout(() => (keyPrefix = ''), 900);
+			return;
+		}
+		if (event.key.toLowerCase() === 't') { event.preventDefault(); openModal('task'); }
+		if (event.key === '?') { event.preventDefault(); paletteOpen = true; }
 	}
+
+	onMount(() => {
+		const saved = localStorage.getItem('baseplate:collapsed-projects');
+		if (saved) {
+			try { collapsed = JSON.parse(saved); } catch { collapsed = {}; }
+		} else {
+			collapsed = Object.fromEntries(shell.activeProjects.map((project) => [project.id, !isProjectActive(project.slug)]));
+		}
+		return () => { if (keyPrefixTimer) clearTimeout(keyPrefixTimer); };
+	});
 </script>
 
 <svelte:window onkeydown={keyHandler} />
@@ -227,7 +270,7 @@
 
 	<!-- ═══ Rail ═══ -->
 	<nav class="bp-rail" aria-label="Main navigation">
-		<a class="bp-rail-logo" href="/today" title="baseplate.">
+		<a class="bp-rail-logo" href="/work" title="baseplate.">
 			<img src={Logo} alt="Baseplate" />
 		</a>
 
@@ -301,6 +344,11 @@
 
 			<!-- Meta nav items -->
 			<div class="bp-channel-meta">
+				<a class={`bp-channel-meta-item ${routeMatches('/work') ? 'is-active' : ''}`} href="/work">
+					<span class="bp-channel-icon">W</span>
+					<span>Workbench</span>
+					{#if shell.snapshot.openTaskCount > 0}<span class="bp-channel-count">{shell.snapshot.openTaskCount}</span>{/if}
+				</a>
 				<a class={`bp-channel-meta-item ${routeMatches('/today') ? 'is-active' : ''}`} href="/today">
 					<span class="bp-channel-icon">T</span>
 					<span>Today</span>
@@ -474,11 +522,15 @@
 							<textarea class="textarea textarea-bordered min-h-28" bind:value={projectSummary} placeholder="Scope, owner, and current direction"></textarea>
 						</label>
 					</div>
+					<label class="grid gap-2">
+						<span class="bp-meta">Local repository path <span class="normal-case opacity-70">(optional)</span></span>
+						<input class="input input-bordered font-mono" bind:value={projectRepoPath} placeholder="/absolute/path/to/repository" />
+					</label>
 				{:else}
 					<label class="grid gap-2">
 						<span class="bp-meta">Project</span>
 						<select class="select select-bordered" bind:value={selectedProjectId}>
-							{#each shell.allProjects as project}
+							{#each shell.allProjects.filter((project) => project.status === 'active' || project.status === 'on_hold') as project}
 								<option value={project.id}>{project.title}</option>
 							{/each}
 						</select>
