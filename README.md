@@ -86,4 +86,4 @@ npm run test:e2e   # Playwright
 ## Privacy  
 Your files and SQLite databases live strictly inside `workspace/`, which is ignored by `.gitignore`. Nothing leaves your machine  
 
-The Docker Compose configuration binds to `127.0.0.1` by default so mutating workspace APIs are not exposed to the local network.
+Docker Compose publishes the application on all host interfaces so it can be reached directly over a trusted LAN or tailnet. Set `HOST_PORT` and `ORIGIN` in `.env` when the application is not served from `http://localhost:5173`. Do not expose the application port directly to the public internet.

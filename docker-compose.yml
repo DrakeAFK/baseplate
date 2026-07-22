@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "127.0.0.1:${HOST_PORT:-5173}:5173"
+      - "${HOST_PORT:-5173}:5173"
     environment:
       - WORKSPACE_DIR=/data/workspace
       - NODE_ENV=production
